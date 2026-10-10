@@ -83,13 +83,11 @@ jobs:
 
           "ONNXRuntime_DIR=$root" >> $env:GITHUB_ENV
 
-          Write-Host "ONNX Runtime successfully installed."
+          Write-Host "ONNX Runtime installed."
           Write-Host "Directory: $root"
 
       - name: Configure CMake
         shell: cmd
-        env:
-          QTDIR: ${{ env.QT_ROOT_DIR }}
         run: >
           .github\workflows\build-windows.bat cmake
           -G Ninja
@@ -103,6 +101,7 @@ jobs:
       - name: Verify dependencies detected by CMake
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $cache = Join-Path $env:GITHUB_WORKSPACE "build/CMakeCache.txt"
 
           if (!(Test-Path $cache)) {
@@ -117,25 +116,20 @@ jobs:
             "ONNXRuntime_INCLUDE_DIR",
             "OpenCV_DIR"
           )) {
-            $match = [regex]::Match(
-              $content,
-              "(?m)^$name:[^=]*=(.*)$"
-            )
+            $pattern = "(?m)^${name}:[^=]*=(.*)$"
+            $match = [regex]::Match($content, $pattern)
 
             if (!$match.Success) {
-              throw "Missing CMake dependency entry: $name"
+              throw "Missing CMake dependency entry: ${name}"
             }
 
             $value = $match.Groups[1].Value.Trim()
 
-            if (
-              !$value -or
-              $value -match "NOTFOUND"
-            ) {
-              throw "Dependency not found: $name = $value"
+            if (!$value -or $value -match "NOTFOUND") {
+              throw "Dependency not found: ${name} = $value"
             }
 
-            Write-Host "$name = $value"
+            Write-Host "${name} = $value"
           }
 
           Write-Host "Dependency checks passed."
@@ -149,14 +143,14 @@ jobs:
           --target install
           --parallel 4
 
-      - name: Verify NeuralNet and application files
+      - name: Verify NeuralNet and application
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $stage = Join-Path $env:GITHUB_WORKSPACE "stage"
 
           if (!(Test-Path $stage)) {
-            throw "Install folder missing: $stage"
+            throw "Install directory not found: $stage"
           }
 
           $files = @(Get-ChildItem $stage -Recurse -File)
@@ -202,28 +196,23 @@ jobs:
           Write-Host "Application: $($exe.FullName)"
           Write-Host "NeuralNet: $($neural.FullName)"
           Write-Host "ONNX Runtime: $($onnx.FullName)"
-          Write-Host "NeuralNet models: $($models.Count)"
+          Write-Host "AI model files: $($models.Count)"
 
-          Write-Host "NeuralNet file verification PASSED."
+          Write-Host "NeuralNet verification PASSED."
 
-      - name: List installed tracker plugins
+      - name: List installed plugins
         shell: pwsh
         run: |
           $stage = Join-Path $env:GITHUB_WORKSPACE "stage"
 
-          Write-Host "Installed tracker plugins:"
+          Write-Host "Installed DLL files:"
 
-          Get-ChildItem $stage -Recurse -File |
-            Where-Object {
-              $_.Name -match "^opentrack-tracker.*\.dll$"
-            } |
+          Get-ChildItem $stage -Recurse -Filter "*.dll" -File |
             ForEach-Object {
               Write-Host $_.FullName
             }
 
-          Write-Host "Note: some optional trackers require extra SDKs."
-
-      - name: Package Windows build
+      - name: Package Windows x64 build
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -238,13 +227,12 @@ jobs:
             -Force
 
           if (!(Test-Path $zip)) {
-            throw "Failed to package OpenTrack."
+            throw "ZIP packaging failed."
           }
 
-          Write-Host "Created: $zip"
-          Write-Host "Size: $((Get-Item $zip).Length) bytes"
+          Write-Host "Created $zip"
 
-      - name: Upload Windows x64 build
+      - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: opentrack-windows-x64-full
