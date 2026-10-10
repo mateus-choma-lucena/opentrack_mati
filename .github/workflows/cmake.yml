@@ -1,5 +1,5 @@
 
-name: OpenTrack Windows x64 Build
+name: OpenTrack Windows x64 Full Build
 
 on:
   push:
@@ -13,10 +13,11 @@ permissions:
 
 env:
   BUILD_TYPE: Release
+  ONNX_VERSION: "1.23.2"
 
 jobs:
   build-windows:
-    name: Build Windows x64
+    name: Windows x64 - NeuralNet Enabled
     runs-on: windows-latest
 
     steps:
@@ -32,81 +33,221 @@ jobs:
           submodules: recursive
           path: opentrack-depends
 
-      - name: Install Ninja
+      - name: Set up Ninja
         uses: seanmiddleditch/gha-setup-ninja@master
 
       - name: Install OpenCV
         uses: cvpkg/opencv-action@main
         with:
-          opencv_tag: '4.x'
-          BUILD_LIST: 'core,imgcodecs,imgproc,video,videoio,calib3d,highgui'
-          BUILD_SHARED_LIBS: 'OFF'
-          BUILD_WITH_STATIC_CRT: 'OFF'
+          opencv_tag: "4.x"
+          BUILD_LIST: "core,imgcodecs,imgproc,video,videoio,calib3d,highgui,flann,features2d"
+          BUILD_SHARED_LIBS: "OFF"
+          BUILD_WITH_STATIC_CRT: "OFF"
 
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4
         with:
           dir: "${{ github.workspace }}/qt"
-          version: '6.10.3'
+          version: "6.10.3"
           modules: qtserialport qtmultimedia qtimageformats
           target: desktop
 
+      - name: Install ONNX Runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $version = $env:ONNX_VERSION
+          $root = Join-Path $env:GITHUB_WORKSPACE "onnxruntime"
+          $package = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
+
+          $url = "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$version/microsoft.ml.onnxruntime.$version.nupkg"
+
+          New-Item -ItemType Directory -Force -Path $root |
+            Out-Null
+
+          Invoke-WebRequest -Uri $url -OutFile $package
+
+          Expand-Archive -Path $package `
+            -DestinationPath $root -Force
+
+          $include = Join-Path $root "build/native/include/onnxruntime_cxx_api.h"
+          $lib = Join-Path $root "runtimes/win-x64/native/onnxruntime.lib"
+          $dll = Join-Path $root "runtimes/win-x64/native/onnxruntime.dll"
+
+          foreach ($file in @($include, $lib, $dll)) {
+            if (!(Test-Path $file)) {
+              throw "Missing ONNX Runtime file: $file"
+            }
+          }
+
+          "ONNXRuntime_DIR=$root" >> $env:GITHUB_ENV
+
+          Write-Host "ONNX Runtime successfully installed."
+          Write-Host "Directory: $root"
+
       - name: Configure CMake
         shell: cmd
+        env:
+          QTDIR: ${{ env.QT_ROOT_DIR }}
         run: >
           .github\workflows\build-windows.bat cmake
-          -GNinja
+          -G Ninja
           -S "${{ github.workspace }}"
           -B "${{ github.workspace }}\build"
           -DCMAKE_BUILD_TYPE=Release
-          -DQt6_DIR="${{ env.QT_ROOT_DIR }}/lib/cmake/Qt6"
           -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/stage"
+          -DQt6_DIR="${{ env.QT_ROOT_DIR }}/lib/cmake/Qt6"
+          -DONNXRuntime_DIR="${{ env.ONNXRuntime_DIR }}"
 
-      - name: Build and install
+      - name: Verify dependencies detected by CMake
+        shell: pwsh
+        run: |
+          $cache = Join-Path $env:GITHUB_WORKSPACE "build/CMakeCache.txt"
+
+          if (!(Test-Path $cache)) {
+            throw "CMakeCache.txt not found."
+          }
+
+          $content = Get-Content $cache -Raw
+
+          foreach ($name in @(
+            "ONNXRuntime_LIBRARY",
+            "ONNXRuntime_RUNTIME",
+            "ONNXRuntime_INCLUDE_DIR",
+            "OpenCV_DIR"
+          )) {
+            $match = [regex]::Match(
+              $content,
+              "(?m)^$name:[^=]*=(.*)$"
+            )
+
+            if (!$match.Success) {
+              throw "Missing CMake dependency entry: $name"
+            }
+
+            $value = $match.Groups[1].Value.Trim()
+
+            if (
+              !$value -or
+              $value -match "NOTFOUND"
+            ) {
+              throw "Dependency not found: $name = $value"
+            }
+
+            Write-Host "$name = $value"
+          }
+
+          Write-Host "Dependency checks passed."
+
+      - name: Build and install OpenTrack
         shell: cmd
         run: >
           .github\workflows\build-windows.bat cmake
           --build "${{ github.workspace }}\build"
           --config Release
           --target install
+          --parallel 4
 
-      - name: Verify build output
+      - name: Verify NeuralNet and application files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = Join-Path $env:GITHUB_WORKSPACE "stage"
+
+          if (!(Test-Path $stage)) {
+            throw "Install folder missing: $stage"
+          }
+
+          $files = @(Get-ChildItem $stage -Recurse -File)
+
+          $exe = $files |
+            Where-Object { $_.Name -eq "opentrack.exe" } |
+            Select-Object -First 1
+
+          if (!$exe) {
+            throw "opentrack.exe is missing."
+          }
+
+          $neural = $files |
+            Where-Object {
+              $_.Name -match "neuralnet.*\.dll$"
+            } |
+            Select-Object -First 1
+
+          if (!$neural) {
+            throw "NeuralNet tracker DLL is missing."
+          }
+
+          $onnx = $files |
+            Where-Object {
+              $_.Name -eq "onnxruntime.dll"
+            } |
+            Select-Object -First 1
+
+          if (!$onnx) {
+            throw "ONNX Runtime DLL is missing."
+          }
+
+          $models = @(
+            $files | Where-Object {
+              $_.Extension -eq ".onnx"
+            }
+          )
+
+          if ($models.Count -lt 5) {
+            throw "NeuralNet models missing. Found $($models.Count), expected 5."
+          }
+
+          Write-Host "Application: $($exe.FullName)"
+          Write-Host "NeuralNet: $($neural.FullName)"
+          Write-Host "ONNX Runtime: $($onnx.FullName)"
+          Write-Host "NeuralNet models: $($models.Count)"
+
+          Write-Host "NeuralNet file verification PASSED."
+
+      - name: List installed tracker plugins
         shell: pwsh
         run: |
           $stage = Join-Path $env:GITHUB_WORKSPACE "stage"
 
-          if (!(Test-Path $stage)) {
-            throw "Install directory not found: $stage"
-          }
+          Write-Host "Installed tracker plugins:"
 
           Get-ChildItem $stage -Recurse -File |
-            Select-Object -ExpandProperty FullName
+            Where-Object {
+              $_.Name -match "^opentrack-tracker.*\.dll$"
+            } |
+            ForEach-Object {
+              Write-Host $_.FullName
+            }
 
-          $exe = Get-ChildItem $stage -Recurse `
-            -Filter "opentrack.exe" -File |
-            Select-Object -First 1
-
-          if (!$exe) {
-            throw "opentrack.exe was not found"
-          }
-
-          Write-Host "Found executable: $($exe.FullName)"
+          Write-Host "Note: some optional trackers require extra SDKs."
 
       - name: Package Windows build
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+
           $stage = Join-Path $env:GITHUB_WORKSPACE "stage"
-          $zip = Join-Path $env:GITHUB_WORKSPACE "opentrack-windows-x64.zip"
+          $zip = Join-Path $env:GITHUB_WORKSPACE "opentrack-windows-x64-full.zip"
 
-          Compress-Archive -Path "$stage\*" `
-            -DestinationPath $zip -Force
+          Compress-Archive `
+            -Path "$stage\*" `
+            -DestinationPath $zip `
+            -CompressionLevel Optimal `
+            -Force
 
-          Write-Host "Created $zip"
+          if (!(Test-Path $zip)) {
+            throw "Failed to package OpenTrack."
+          }
 
-      - name: Upload Windows x64 artifact
+          Write-Host "Created: $zip"
+          Write-Host "Size: $((Get-Item $zip).Length) bytes"
+
+      - name: Upload Windows x64 build
         uses: actions/upload-artifact@v4
         with:
-          name: opentrack-windows-x64
-          path: opentrack-windows-x64.zip
+          name: opentrack-windows-x64-full
+          path: opentrack-windows-x64-full.zip
           if-no-files-found: error
           retention-days: 30
