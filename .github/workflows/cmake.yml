@@ -83,8 +83,7 @@ jobs:
 
           "ONNXRuntime_DIR=$root" >> $env:GITHUB_ENV
 
-          Write-Host "ONNX Runtime installed."
-          Write-Host "Directory: $root"
+          Write-Host "ONNX Runtime installed successfully."
 
       - name: Configure CMake
         shell: cmd
@@ -98,10 +97,11 @@ jobs:
           -DQt6_DIR="${{ env.QT_ROOT_DIR }}/lib/cmake/Qt6"
           -DONNXRuntime_DIR="${{ env.ONNXRuntime_DIR }}"
 
-      - name: Verify dependencies detected by CMake
+      - name: Verify ONNX Runtime configuration
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
           $cache = Join-Path $env:GITHUB_WORKSPACE "build/CMakeCache.txt"
 
           if (!(Test-Path $cache)) {
@@ -113,8 +113,7 @@ jobs:
           foreach ($name in @(
             "ONNXRuntime_LIBRARY",
             "ONNXRuntime_RUNTIME",
-            "ONNXRuntime_INCLUDE_DIR",
-            "OpenCV_DIR"
+            "ONNXRuntime_INCLUDE_DIR"
           )) {
             $pattern = "(?m)^${name}:[^=]*=(.*)$"
             $match = [regex]::Match($content, $pattern)
@@ -132,7 +131,7 @@ jobs:
             Write-Host "${name} = $value"
           }
 
-          Write-Host "Dependency checks passed."
+          Write-Host "ONNX Runtime verification PASSED."
 
       - name: Build and install OpenTrack
         shell: cmd
@@ -147,10 +146,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
           $stage = Join-Path $env:GITHUB_WORKSPACE "stage"
 
           if (!(Test-Path $stage)) {
-            throw "Install directory not found: $stage"
+            throw "Install directory missing: $stage"
           }
 
           $files = @(Get-ChildItem $stage -Recurse -File)
@@ -170,7 +170,7 @@ jobs:
             Select-Object -First 1
 
           if (!$neural) {
-            throw "NeuralNet tracker DLL is missing."
+            throw "NeuralNet tracker DLL is missing. Check OpenCV and OpenMP detection in CMake logs."
           }
 
           $onnx = $files |
@@ -190,29 +190,27 @@ jobs:
           )
 
           if ($models.Count -lt 5) {
-            throw "NeuralNet models missing. Found $($models.Count), expected 5."
+            throw "NeuralNet model files missing. Found $($models.Count), expected at least 5."
           }
 
           Write-Host "Application: $($exe.FullName)"
           Write-Host "NeuralNet: $($neural.FullName)"
           Write-Host "ONNX Runtime: $($onnx.FullName)"
-          Write-Host "AI model files: $($models.Count)"
+          Write-Host "Model files: $($models.Count)"
 
-          Write-Host "NeuralNet verification PASSED."
+          Write-Host "NeuralNet build files verified successfully."
 
-      - name: List installed plugins
+      - name: List installed DLL plugins
         shell: pwsh
         run: |
           $stage = Join-Path $env:GITHUB_WORKSPACE "stage"
-
-          Write-Host "Installed DLL files:"
 
           Get-ChildItem $stage -Recurse -Filter "*.dll" -File |
             ForEach-Object {
               Write-Host $_.FullName
             }
 
-      - name: Package Windows x64 build
+      - name: Package Windows build
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -230,7 +228,8 @@ jobs:
             throw "ZIP packaging failed."
           }
 
-          Write-Host "Created $zip"
+          Write-Host "Created: $zip"
+          Write-Host "Size: $((Get-Item $zip).Length) bytes"
 
       - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v4
