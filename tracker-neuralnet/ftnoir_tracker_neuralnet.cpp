@@ -980,6 +980,12 @@ void NeuralNetTracker::data_with_info(double* data, tracking_sample_info& sample
             sample.motion_aware=result.diagnostics.stabilization_requested;
             sample.recovery_managed=nn2_processed_parameters_.recovery;
             sample.motion=result.diagnostics.motion; sample.prediction_allowed=result.prediction_allowed;
+            if (sample.validated && result.valid && !sample.holding && !sample.recovering && result.prediction_allowed && capture_valid_.load()) {
+                if (const auto physical=nn2_pipeline_.validated_measurement(enhanced::clock::now())) {
+                    sample.calibration_physical=physical->first;
+                    sample.calibration_captured=physical->second;
+                }
+            }
             if (!result.prediction_allowed) sample.flow.observation.valid=false;
             if (result.valid && result.diagnostics.enabled) std::copy(result.value.begin(),result.value.end(),data);
             else std::fill_n(data,6,std::numeric_limits<double>::quiet_NaN());

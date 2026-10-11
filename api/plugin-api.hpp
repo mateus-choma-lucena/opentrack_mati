@@ -32,6 +32,10 @@ struct tracking_sample_info
     bool motion_aware = false, prediction_allowed = true, recovery_managed = false;
     enhanced::motion_state motion = enhanced::motion_state::stationary;
     enhanced::flow_assistance flow;
+    // Optional accepted physical observation, before internal filtering/recovery/flow.
+    // Calibration requires this explicit provenance; ordinary output is unchanged.
+    std::optional<enhanced::pose> calibration_physical;
+    enhanced::timestamp calibration_captured{};
 };
 
 using Pose = Mat<double, 6, 1>;

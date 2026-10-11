@@ -119,6 +119,14 @@
         <translation>复制当前配置</translation>
     </message>
     <message>
+        <source>Import INI profile…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export saved INI profile…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open configuration directory</source>
         <translation>打开配置目录</translation>
     </message>
@@ -173,6 +181,30 @@ Exiting now.</source>
 &quot;%1&quot;%2
 
 现在退出。</translation>
+    </message>
+    <message>
+        <source>Import OpenTrack profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenTrack profiles (*.ini)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Imported as %1. Select it from the profile list when tracking is stopped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export saved OpenTrack profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export profile</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source> :: </source>

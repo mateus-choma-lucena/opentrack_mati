@@ -10,8 +10,11 @@
 #include "logic/main-settings.hpp"
 #include "spline/spline-widget.hpp"
 #include "enhanced/head-controls-ui.hpp"
+#include "smart-mapping-dialog.hpp"
 #include <QGroupBox>
 #include <QVBoxLayout>
+#include <QPushButton>
+#include <QMessageBox>
 
 #include <QtEvents>
 
@@ -59,6 +62,53 @@ mapping_dialog::mapping_dialog(Mappings& m) : m(m), widgets{}
         [this] { const int tab=ui.tabWidget->currentIndex(); return tab<3?tab+3:tab-3; },
         [this](int axis) { return this->m(axis).opts.max_clamp_y(); });
     ui.verticalLayout->insertWidget(0,controls);
+    auto* calibration_row=new QHBoxLayout;
+    auto* calibrate=new QPushButton(tr("Automatic calibration…"),this); calibrate->setObjectName("automaticCalibration");
+    auto* smart=new QPushButton(tr("Smart Mapping…"),this);smart->setObjectName("smartMapping");
+    auto* rollback=new QPushButton(tr("Undo calibration / previous mapping"),this); rollback->setObjectName("calibrationRollback");
+    auto* original=new QPushButton(tr("Restore original mapping"),this);original->setObjectName("mappingRestoreOriginal");
+    auto* reset=new QPushButton(tr("Reset this axis to previous state"),this);reset->setObjectName("mappingResetAxis");
+    calibration_row->addWidget(calibrate);calibration_row->addWidget(smart); calibration_row->addWidget(rollback); ui.verticalLayout->insertLayout(1,calibration_row);
+    auto* restore_row=new QHBoxLayout;restore_row->addWidget(reset);restore_row->addWidget(original);ui.verticalLayout->insertLayout(2,restore_row);
+    connect(calibrate,&QPushButton::clicked,this,[this] {
+        // Commit any pending manual edits only after the user accepts the generated curves.
+        calibration_dialog dialog(this->m,calibration_samples,calibration_stop_tracking,calibration_center_tracking,this);
+        dialog.new_profile_path=new_mapping_profile_path;
+        if (dialog.exec()==QDialog::Accepted) {if(dialog.applied_to_current() && !enhanced::calibration::save_selected_mapping(this->m,calibration_profile,dialog.selected_axes(),enhanced_opts))QMessageBox::warning(this,tr("Profile"),tr("The profile could not be saved. Retry saving from Mapping."));if(profiles_changed)profiles_changed();}
+        refresh_tab();
+    });
+    connect(smart,&QPushButton::clicked,this,[this] {
+        smart_mapping_dialog dialog(this->m,calibration_stop_tracking,new_mapping_profile_path,this);
+        if(dialog.exec()==QDialog::Accepted){if(dialog.applied_to_current() && !enhanced::calibration::save_selected_mapping(this->m,calibration_profile,dialog.selected_axes(),enhanced_opts))QMessageBox::warning(this,tr("Profile"),tr("The profile could not be saved. Retry saving from Mapping."));if(profiles_changed)profiles_changed();}refresh_tab();
+    });
+    connect(reset,&QPushButton::clicked,this,[this] {
+        const int tab=ui.tabWidget->currentIndex(),i=tab<3?tab+3:tab-3;
+        const auto axes=QJsonDocument::fromJson(previous_mapping.toUtf8()).object()["axes"].toArray();if(axes.size()!=6)return;
+        if(calibration_stop_tracking && !calibration_stop_tracking())return;
+        const auto a=axes[i].toObject();auto& map=this->m(i);
+        map.opts.clamp_x_=axis_opts::max_clamp(a["clamp-x"].toInt());map.opts.clamp_y_=axis_opts::max_clamp(a["clamp-y"].toInt());map.opts.altp=a["alt-enabled"].toBool();
+        map.spline_main.set_points(*enhanced::calibration::read_points(a["main"]));map.spline_alt.set_points(*enhanced::calibration::read_points(a["alt"]));refresh_tab();
+    });
+    connect(original,&QPushButton::clicked,this,[this] {
+        if((*calibration_profile.original).isEmpty()){QMessageBox::information(this,tr("Mapping"),tr("This profile has no original mapping snapshot."));return;}
+        if(QMessageBox::question(this,tr("Restore original mapping"),tr("Restore all mapping axes captured before calibration? Tracking will stop and this profile will be saved."),QMessageBox::Yes|QMessageBox::No,QMessageBox::No)!=QMessageBox::Yes)return;
+        if(!calibration_stop_tracking || !calibration_stop_tracking())return;
+        const auto selected=enhanced::calibration::snapshot_selection(*calibration_profile.original);
+        if(enhanced::calibration::restore_original(this->m,calibration_profile,true)) {
+            if(!enhanced::calibration::save_selected_mapping(this->m,calibration_profile,selected,enhanced_opts))QMessageBox::warning(this,tr("Profile"),tr("The restored profile could not be saved. Retry saving from Mapping."));
+        }else QMessageBox::warning(this,tr("Mapping"),tr("The original snapshot is invalid. Mappings were not changed."));refresh_tab();
+    });
+    connect(rollback,&QPushButton::clicked,this,[this] {
+        if ((*calibration_profile.rollback).isEmpty()) { QMessageBox::information(this,tr("Calibration"),tr("This profile has no calibration rollback snapshot.")); return; }
+        if (QMessageBox::question(this,tr("Restore calibration"),tr("Restore the previous calibrated mapping branches and their limits? Tracking will stop and the restored profile will be saved."),QMessageBox::Yes|QMessageBox::No,QMessageBox::No)!=QMessageBox::Yes) return;
+        if (!calibration_stop_tracking || !calibration_stop_tracking()) return;
+        const auto selected=enhanced::calibration::snapshot_selection(*calibration_profile.rollback);
+        if (enhanced::calibration::restore(this->m,calibration_profile,true)) {
+            if(!enhanced::calibration::save_selected_mapping(this->m,calibration_profile,selected,enhanced_opts))QMessageBox::warning(this,tr("Profile"),tr("The restored profile could not be saved. Retry saving from Mapping."));
+        }
+        else QMessageBox::warning(this,tr("Calibration"),tr("The rollback snapshot is invalid. Mappings were not changed."));
+        refresh_tab();
+    });
     auto* legend=new QLabel(tr("Dashed: original curve. Orange: adjusted target, capped at Max output. Points edit the original."));
     legend->setToolTip(tr("Speed controls how quickly output reaches the adjusted target."));
     legend->setWordWrap(true); ui.verticalLayout->insertWidget(1,legend);
@@ -239,22 +289,21 @@ void mapping_dialog::refresh_tab()
 
 void mapping_dialog::save_dialog()
 {
+    calibration_profile.b->save();
     enhanced_opts.b->save();
     s.b_map->save();
 
-    for (int i = 0; i < 6; i++)
+    m.forall([](Map& axis)
     {
-        m.forall([&](Map& s)
-        {
-            s.spline_main.save();
-            s.spline_alt.save();
-            s.opts.b_mapping_window->save();
-        });
-    }
+        axis.spline_main.save();
+        axis.spline_alt.save();
+        axis.opts.b_mapping_window->save();
+    });
 }
 
 void mapping_dialog::invalidate_dialog()
 {
+    calibration_profile.b->reload();
     enhanced_opts.b->reload();
     s.b_map->reload();
 
@@ -270,6 +319,12 @@ void mapping_dialog::closeEvent(QCloseEvent *)
 {
     qDebug() << "mapping_dialog: closeEvent";
     reject();
+}
+void mapping_dialog::showEvent(QShowEvent* event)
+{
+    enhanced::calibration::record affected;for(auto& a:affected.axis)a.calibrated=true;
+    previous_mapping=enhanced::calibration::snapshot(m,affected,calibration_profile);
+    QDialog::showEvent(event);
 }
 
 void mapping_dialog::doOK()

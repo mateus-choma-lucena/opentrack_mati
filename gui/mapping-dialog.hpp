@@ -7,6 +7,7 @@
 #include "spline/spline-widget.hpp"
 #include "enhanced/options.hpp"
 #include "enhanced/telemetry.hpp"
+#include "calibration-dialog.hpp"
 #include <functional>
 #include <QTimer>
 
@@ -22,16 +23,24 @@ public:
     void refresh_tab();
     inline bool embeddable() noexcept { return false; }
     std::function<std::optional<enhanced::head_controls_snapshot>()> head_diagnostics;
+    calibration_input calibration_samples;
+    std::function<bool()> calibration_stop_tracking;
+    std::function<bool()> calibration_center_tracking;
+    std::function<QString()> new_mapping_profile_path;
+    std::function<void()> profiles_changed;
 private:
     Ui::mapping_dialog ui;
     Mappings& m;
     main_settings s;
     enhanced_settings enhanced_opts;
     QTimer preview_timer;
+    enhanced::calibration::profile calibration_profile;
+    QString previous_mapping;
 
     spline_widget* widgets[6][2];
 
     void closeEvent(QCloseEvent*) override;
+    void showEvent(QShowEvent*) override;
 
     void load();
 

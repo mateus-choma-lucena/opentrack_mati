@@ -1,6 +1,7 @@
 #include "proto-ft/ftnoir_protocol_ft.h"
 #include "logic/mappings.hpp"
 #include "enhanced/head-controls.hpp"
+#include "enhanced/calibration-profile.hpp"
 #include <QApplication>
 #include <QTemporaryDir>
 #include <iostream>
@@ -31,6 +32,25 @@ int main(int argc,char** argv)
         check(std::abs(heap->data.X-output[0]*10)<1e-4&&std::abs(heap->data.Y-output[1]*10)<1e-4&&std::abs(heap->data.Z-output[2]*10)<1e-4,"FreeTrack/NPClient translation differs from mapped target");
         check(std::abs(heap->data.Yaw+output[3]*radians)<1e-5&&std::abs(heap->data.Pitch+output[4]*radians)<1e-5&&std::abs(heap->data.Roll-output[5]*radians)<1e-5,"FreeTrack/NPClient rotation sign/gain differs from adjusted curve");
         check(std::abs(heap->data.RawYaw+raw[3]*radians)<1e-5&&std::abs(heap->data.RawX-raw[0]*10)<1e-5,"new gain changed raw protocol fields");
+        // Generated styles go through the same production mapping, gain and
+        // FreeTrack/NPClient writer used by legacy curves.
+        using namespace enhanced::calibration;
+        profile stored;
+        for(auto style:{response_style::natural,response_style::balanced,response_style::responsive}) {
+            record calibrated;
+            for(int i=0;i<6;++i){auto& a=calibrated.axis[i];a.positive={i<3?4.:32.,.95,3,226,true};a.negative={i<3?2.:20.,.9,3,226,true};
+                a.target_positive=i<3?15.:65.;a.target_negative=i<3?12.:55.;a.output_gain=4;a.style=style;check(generate(a),"packet style generation");}
+            check(apply(mappings,calibrated,stored,true),"packet style application");
+            for(int direction:{-1,1}) {
+                for(int i=0;i<6;++i){raw[i]=(i<3?direction>0?4.:-2.:direction>0?32.:-20.);mapped[i]=(direction<0?mappings(i).spline_alt:mappings(i).spline_main).get_value_no_save(raw[i]);limits[i]=mappings(i).opts.max_clamp_y();}
+                enhanced::head_movement_controls generated;generated.configure(start,{true,false,100,55});generated.configure(start+std::chrono::milliseconds(120),{true,false,100,55});
+                const auto final=generated.process(mapped,mapped,start+std::chrono::milliseconds(120),start,limits);producer.pose(final.data(),raw.data());
+                for(int i=0;i<6;++i)check(std::abs(final[i]-(direction>0?calibrated.axis[i].target_positive:-calibrated.axis[i].target_negative))<.1,"packet endpoint gained twice");
+                check(std::abs(heap->data.X-final[0]*10)<1e-4 && std::abs(heap->data.Y-final[1]*10)<1e-4 && std::abs(heap->data.Z-final[2]*10)<1e-4,"smart packet translations");
+                check(std::abs(heap->data.Yaw+final[3]*radians)<1e-5 && std::abs(heap->data.Pitch+final[4]*radians)<1e-5 && std::abs(heap->data.Roll-final[5]*radians)<1e-5,"smart packet rotations");
+                check(std::abs(heap->data.RawYaw+raw[3]*radians)<1e-5,"smart packet changed raw observation");
+            }
+        }
         std::cout << "Unchanged production FreeTrack/NPClient packet: six mapped axes, radians/mm, signs and raw fields PASS\n"; return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

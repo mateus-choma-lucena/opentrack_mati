@@ -1,4 +1,5 @@
 #include "spline.hpp"
+#include <QSignalBlocker>
 #include "compat/math.hpp"
 
 #include <algorithm>
@@ -366,6 +367,21 @@ void spline::add_point(QPointF pt)
 void spline::add_point(double x, double y)
 {
     add_point({ x, y });
+}
+
+void spline::set_points(const points_t& value)
+{
+    std::shared_ptr<settings> S;
+    {
+        QMutexLocker lock(&mtx);
+        S=s;
+        points=value;
+        std::stable_sort(points.begin(),points.end(),sort_fn);
+        const QSignalBlocker block(&s->points);
+        s->points=points;
+        update_interp_data();
+    }
+    emit S->recomputed();
 }
 
 void spline::move_point(int idx, QPointF pt)

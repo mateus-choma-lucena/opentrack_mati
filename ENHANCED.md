@@ -7,6 +7,12 @@ feature at a time when comparing it with your existing profile.
 
 ## Implemented software
 
+- **Automatic Calibration** guides neutral, stationary noise, signed comfortable yaw/pitch
+  and optional roll/translations from NeuralNet 2.0 validated physical observations.
+  Mapping provides editable virtual targets, actual spline previews, explicit approval,
+  additive versioned profile metadata and persistent rollback. See
+  [AUTOMATIC-CALIBRATION.md](AUTOMATIC-CALIBRATION.md) for gates, workflow and limitations.
+
 - **NeuralNet 2.0** adds optional raw temporal validation, time-based tracking recovery,
   estimated reliability, motion metadata shared with the existing adaptive filter,
   additive settings and diagnostics. It is disabled by default.
@@ -188,4 +194,6 @@ Open **Actions → OpenTrack Windows x64 Full Build → Run workflow**. The work
 - Restored the missing `video-ps3eye/ps3eye-driver` submodule checkout without changing its source.
 
 Generated builds, downloaded SDKs, test results, UI previews and package ZIPs are local artifacts.
+Smart Mapping and editable racing templates extend the native spline editor; see
+[SMART-MAPPING.md](SMART-MAPPING.md) for comparison, gain/Speed semantics and profile safety.
 Build verification may refresh existing translation catalogs through OpenTrack's normal lupdate target.

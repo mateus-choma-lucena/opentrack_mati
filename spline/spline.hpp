@@ -134,6 +134,8 @@ class OTR_SPLINE_EXPORT spline : public base_spline
 
 public:
     void invalidate_settings();
+    // Replace a complete branch with one interpolation rebuild.
+    void set_points(const points_t& value);
 
     void reload();
     void save();

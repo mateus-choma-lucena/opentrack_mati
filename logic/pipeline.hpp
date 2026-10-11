@@ -17,6 +17,7 @@
 #include "enhanced/motion.hpp"
 #include "enhanced/options.hpp"
 #include "enhanced/head-controls.hpp"
+#include "enhanced/calibration.hpp"
 
 #include <QMutex>
 #include <QThread>
@@ -91,6 +92,8 @@ class OTR_LOGIC_EXPORT pipeline : private QThread
     enhanced::head_movement_controls head_controls;
     enhanced::head_controls_snapshot head_diagnostic;
     tracking_sample_info current_sample;
+    enhanced::calibration::stream calibration_stream;
+    std::uint64_t calibration_center_epoch=0;
     const Mappings& m;
 
     Timer t;
@@ -140,6 +143,8 @@ public:
 
     void raw_and_mapped_pose(double* mapped, double* raw) const;
     enhanced::head_controls_snapshot head_movement_snapshot() const { QMutexLocker lock(&mtx); return head_diagnostic; }
+    void calibration_enable(bool value) { calibration_stream.enable(value); }
+    std::vector<enhanced::calibration::observation> calibration_drain() { return calibration_stream.drain(); }
     void start() { QThread::start(QThread::HighPriority); }
 
     void toggle_zero();

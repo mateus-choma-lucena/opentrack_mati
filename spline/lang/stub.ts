@@ -4,6 +4,14 @@
 <context>
     <name>spline_detail::spline_widget</name>
     <message>
+        <source>Physical limit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output saturation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Input %1; original curve %2; adjusted target %3</source>
         <translation type="unfinished"></translation>
     </message>

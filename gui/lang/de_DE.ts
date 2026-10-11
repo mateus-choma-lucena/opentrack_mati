@@ -58,6 +58,311 @@ Klicke „Kalibrierung löschen“, um jegliche Kalibrierungsdaten der zugehöri
     </message>
 </context>
 <context>
+    <name>calibration_dialog</name>
+    <message>
+        <source>Automatic Head Movement Calibration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use only a relaxed, comfortable range. Never force your neck. First move gently to the requested position, then press Record and hold it. No curves change during measurement.
+Requires NeuralNet 2.0 with pose validation enabled. Loss or poor reliability requires a retry. Recenter restarts the sequence.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Include roll (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Include X/Y/Z translations (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>General head tracking</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Flight simulation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Driving simulation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Record / Retry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm and continue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Axis</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Physical −</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Physical +</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Virtual −</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Virtual +</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deadzone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shape</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compare styles, edit points, select axes or save as…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I approve replacing the calibrated mapping branches and their limits. Keep a rollback snapshot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Virtual targets are game camera movement, not physical head rotation. Yaw defaults to 150° in each direction. Deadzones use measured noise; higher Shape softens small motion. Applying stops tracking so curves can be replaced safely, then saves this profile. Restart tracking when ready.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply curves and stop tracking</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tracking could not be stopped. Curves have not been applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Curve validation failed. Curves have not been applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1. Neutral position: sit normally and look straight ahead. Record will center tracking here; remain relaxed for at least two seconds.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tracking could not be centered. Restart tracking and retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tracking stopped. Restart tracking and begin again from neutral.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>2. Stationary noise: remain relaxed at neutral for at least four seconds. Breathe normally and avoid deliberate movement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1. %2 Hold only a comfortable position, then Record for at least two seconds.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I stayed relaxed at neutral without deliberate movement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This physical position felt comfortable; I did not strain.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ready to record. Tracking must be running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn left.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn right.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Look upward.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Look downward.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tilt left.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tilt right.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Translation calibration requires relative translation and neck displacement to be disabled in Options. Retry after changing them, or skip translations.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move left.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move right.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move upward.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move downward.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move forward.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move backward.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable mapping and centering, and disable automatic centering in Options before calibration.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This axis must use its own tracker input in Options. Disabled or remapped axes cannot be calibrated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start tracking with NeuralNet 2.0 and validation enabled, then retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recenter detected. Restart from neutral.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 valid samples, %2 seconds. %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm comfort to continue.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep holding gently.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Movement or drift makes this noise measurement ambiguous. Return to neutral and retry; it will not be treated as sensor jitter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Endpoint was too small or not held steadily. Return to a comfortable position and retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This repeated the same signed direction. Move gently in the opposite requested direction and retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tilt left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backward</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tilt right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Skipped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Virtual camera target when turning physically left.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Virtual camera target when turning physically right.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stationary measurement: %1 valid samples, %2 Hz, reliability %3%. Capture interval P05 / median / P95: %4 / %5 / %6 ms.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>
+Per-axis median / MAD / P95 deviation / drift:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>
+Small motion: start with measured deadzones and Shape 2; lower Shape toward 1.2 if fine movement feels weak. Enhanced Adaptive Filter recommendation: jitter protection %1, rotation smoothing %2, translation smoothing %3. Apply these manually only if that filter is selected; these are conservative starting points, not a diagnosis of sensor noise.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Targets include current Amplification once. Neutral Amplification is 42% (1×); Speed 55% preserves the existing filter response.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A generated target cannot pass the native curve/output limits at the current Amplification. Lower its virtual target or open Smart Mapping to inspect and edit the draft. Amplification and Speed are preserved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>calibration_preview</name>
+    <message>
+        <source>Calibrate this axis to preview its curves.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Physical %1 (%2), negative ← 0 → positive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Virtual output: −%1 / +%2 %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>keyboard_listener</name>
     <message>
         <source>Dialog</source>
@@ -120,6 +425,74 @@ Klicke „Kalibrierung löschen“, um jegliche Kalibrierungsdaten der zugehöri
     </message>
     <message>
         <source>Head Movement Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic calibration…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smart Mapping…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo calibration / previous mapping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore original mapping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset this axis to previous state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Profile</source>
+        <translation type="unfinished">Profil</translation>
+    </message>
+    <message>
+        <source>The profile could not be saved. Retry saving from Mapping.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mapping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This profile has no original mapping snapshot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore all mapping axes captured before calibration? Tracking will stop and this profile will be saved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The restored profile could not be saved. Retry saving from Mapping.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The original snapshot is invalid. Mappings were not changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This profile has no calibration rollback snapshot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore calibration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore the previous calibrated mapping branches and their limits? Tracking will stop and the restored profile will be saved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The rollback snapshot is invalid. Mappings were not changed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -471,6 +844,177 @@ Klicke „Kalibrierung löschen“, um jegliche Kalibrierungsdaten der zugehöri
     <message>
         <source>-</source>
         <translation>Entfernen</translation>
+    </message>
+</context>
+<context>
+    <name>smart_comparison</name>
+    <message>
+        <source>Physical input (%1) → effective mapped target (%1); identical ranges, targets and gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>smart_mapping_dialog</name>
+    <message>
+        <source>Smart Mapping and Racing Profiles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preview edits stay in this draft. Physical ranges come from your calibration. Templates suggest editable camera targets without assumptions about game FOV or monitor placement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Personal calibration / custom targets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply axes:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Geometry style</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Virtual target +</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Virtual target −</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Early sensitivity +</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Early sensitivity −</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Response shape</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Physical deadzone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Physical input probe</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Natural: near linear with a soft center. Balanced: softer center with increasing response. Responsive: stronger early response. Geometry only; compare personal preferences below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Grey dashed: original mapping. Blue dashed + points: draft curve. Orange: draft × Amplification, capped at output limit. Shaded: deadzone. Green: comfortable physical limit. Red: output saturation. Left click/drag edits points; right click removes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Positive physical branch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Negative physical branch (magnitudes)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit generated points</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All three modes use the same measured ranges and explicit targets. Natural is conservative and nearly linear; Balanced lowers center sensitivity; Responsive increases early turning. None is objectively best for every user. Speed does not change these lines.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compare all three styles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measured recommendations</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset this axis to previous draft</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I approve saving these selected axes. Applying stops tracking and saves the current profile; Save as writes a separate INI profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply selected axes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save as new profile…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Targets are personal and editable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> These targets are starting preferences, independent of game FOV.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tracking could not be stopped. Retry before applying.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Curve validation failed. Adjust the draft before applying.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Selected axes must use their own tracker input with mapping enabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable relative translation and neck compensation before generating translation targets.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edited points must start at zero, remain monotonic, and stay within measured physical ranges. Reset the axis or adjust its points.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A selected target exceeds the native output limit at this Amplification. Reduce its target or adjust Amplification in Mapping.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a calibrated axis. Run Automatic calibration first to measure personal physical ranges.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Physical %1 %2 → Curve output %3 → Amplification %4× = %5 → Final target %6 %7%8
+Steady target preview includes input/output signs, output cap and zero offset; live filtering and prediction affect the moving pose.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (saturated)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speed %1%: response timing only. 55% retains the existing filter response; Amplification 42% is 1×. %2 No response style adds a temporal filter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Head Movement Controls enabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Head Movement Controls disabled: gain 1× and original timing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This axis has no physical calibration. Run Automatic calibration before requesting measured recommendations.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Draft ready. No profile is written until you approve and choose Apply or Save as.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 </TS>

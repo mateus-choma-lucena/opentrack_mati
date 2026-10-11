@@ -187,6 +187,8 @@ Pose_ reltrans::apply_neck(const rmat& R, int nz, bool disable_tz) const
 pipeline::pipeline(const Mappings& m, const runtime_libraries& libs, TrackLogger& logger) :
     m(m), libs(libs), logger(logger)
 {
+    static std::atomic<std::uint64_t> calibration_session{0};
+    calibration_center_epoch=(++calibration_session)<<32;
 }
 
 pipeline::~pipeline()
@@ -272,6 +274,7 @@ void pipeline::maybe_set_center_pose(const centering_state mode, const Pose& val
 {
     if (b.get(f_center | f_held_center))
     {
+        ++calibration_center_epoch;
         set_center(false);
 
         if (libs.pFilter)
@@ -481,6 +484,11 @@ void pipeline::logic()
         m_newpose = tmp;
     }
 
+    // Invalid observations must reach the wizard even when the normal pipeline takes
+    // its NaN error path. Only a fixed-size queue write occurs on the tracking thread.
+    if (calibration_stream.active() && (!current_sample.calibration_physical || !current_sample.validated))
+        calibration_stream.push({{},current_sample.captured,enhanced::clock::now(),calibration_center_epoch,false});
+
     auto [raw, value, disabled] = get_selected_axis_values(m_newpose);
     Pose response_pose;
     logger.write_pose(raw); // raw
@@ -542,6 +550,18 @@ void pipeline::logic()
 
         // "corrected" - after various transformations to account for camera position
         logger.write_pose(value);
+        if (calibration_stream.active() && current_sample.calibration_physical && current_sample.validated) {
+            const Pose physical(current_sample.calibration_physical->data());
+            auto [unused,selected,ignored]=get_selected_axis_values(physical);
+            selected=apply_center(s.centering_mode,apply_camera_offset(selected));
+            enhanced::calibration::observation sample;
+            std::copy_n(static_cast<const double*>(selected),6,sample.physical.begin());
+            sample.captured=current_sample.calibration_captured;
+            sample.received=enhanced::clock::now(); sample.center_epoch=calibration_center_epoch;
+            sample.valid=!current_sample.holding && !current_sample.recovering;
+            sample.confidence=current_sample.confidence; sample.reliability=current_sample.estimated_reliability;
+            calibration_stream.push(sample);
+        }
     }
 
     {

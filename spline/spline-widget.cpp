@@ -66,9 +66,16 @@ void spline_widget::set_mapping_overlay(bool enabled,double gain)
 double spline_widget::adjusted_output_for_input(double input) const
 {
     if (!config) return 0.;
-    const double original=config->get_value_no_save(input);
-    return overlay_enabled ? enhanced::adjusted_mapping_output(original,overlay_gain,config->max_output()) : original;
+    const double original=config->get_value_no_save(input*branch_sign);
+    const double output=overlay_enabled ? enhanced::adjusted_mapping_output(original,overlay_gain,output_marker>0?output_marker:config->max_output()) : original;
+    return branch_sign<0 ? std::abs(output) : output;
 }
+double spline_widget::comparison_output_for_input(double input) const { return comparison?std::abs(comparison->get_value_no_save(input*branch_sign)):0; }
+void spline_widget::set_comparison(const base_spline* original) {comparison=original;draw_function=true;update();}
+void spline_widget::set_calibration_visuals(double physical,double deadzone,double limit,int sign) {
+    physical_marker=physical;deadzone_marker=deadzone;output_marker=limit;branch_sign=sign<0?-1:1;draw_function=true;update();
+}
+void spline_widget::set_preview_bounds(double input,double output) {preview_x=input;preview_y=output;background_img={};draw_function=true;update();}
 
 QColor spline_widget::colorBezier() const
 {
@@ -124,8 +131,8 @@ void spline_widget::drawBackground()
     const QPen pen(color__, 1, Qt::SolidLine, Qt::FlatCap);
 
     const int ystep = (int)std::ceil(y_step_), xstep = (int)std::ceil(x_step_);
-    const double maxx = config->max_input();
-    const double maxy = config->max_output();
+    const double maxx = plot_max_input();
+    const double maxy = plot_max_output();
 #ifndef OTR_OBSOLETE_QT_WORKAROUND
     double space_width = metrics.horizontalAdvance(' ');
 #else
@@ -218,7 +225,7 @@ void spline_widget::drawFunction()
     const double dpr = screen_dpi();
     const double line_length_pixels = std::fmax(1, dpr);
     const double step = std::fmax(.1, line_length_pixels / c.x());
-    const double maxx = config->max_input();
+    const double maxx = plot_max_input();
 
 #define USE_CUBIC_SPLINE
 #if defined USE_CUBIC_SPLINE
@@ -291,6 +298,30 @@ void spline_widget::drawFunction()
         for (double x=step;x<maxx;x+=step) adjusted.lineTo(plot_point(x));
         adjusted.lineTo(plot_point(maxx));
         painter.drawPath(adjusted); painter.restore();
+    }
+
+    if(comparison || physical_marker>0) {
+        painter.save(); painter.setClipRect(pixel_bounds);
+        if(deadzone_marker>0) {
+            const double end=point_to_pixel({deadzone_marker,0}).x();
+            painter.fillRect(QRectF(pixel_bounds.left(),pixel_bounds.top(),end-pixel_bounds.left(),pixel_bounds.height()),QColor(40,100,170,50));
+        }
+        if(comparison) {
+            painter.setPen(QPen(QColor(70,70,85),2,Qt::DashLine)); QPainterPath old;old.moveTo(point_to_pixel({0,comparison_output_for_input(0)}));
+            for(double x=step;x<=maxx;x+=step) old.lineTo(point_to_pixel({x,comparison_output_for_input(x)}));
+            painter.drawPath(old);
+        }
+        if(physical_marker>0) {
+            painter.setPen(QPen(QColor(20,100,50),1,Qt::DashDotLine));
+            painter.drawLine(point_to_pixel({physical_marker,0}),point_to_pixel({physical_marker,plot_max_output()}));
+            painter.drawText(point_to_pixel({physical_marker,plot_max_output()*.93}),tr("Physical limit"));
+        }
+        if(output_marker>0) {
+            painter.setPen(QPen(QColor(170,40,40),1,Qt::DashLine));
+            painter.drawLine(point_to_pixel({0,output_marker}),point_to_pixel({maxx,output_marker}));
+            painter.drawText(point_to_pixel({maxx*.55,output_marker*.98}),tr("Output saturation"));
+        }
+        painter.restore();
     }
 
     const int alpha = !isEnabled() ? 64 : 120;
@@ -615,8 +646,8 @@ void spline_widget::update_range()
 
     pixel_bounds = { mwl, mhl, (w - mwl - mwr), (h - mhl - mhr) };
     c = {
-        pixel_bounds.width() / std::fmax(1, config->max_input()),
-        pixel_bounds.height() / std::fmax(1, config->max_output())
+        pixel_bounds.width() / std::fmax(1, plot_max_input()),
+        pixel_bounds.height() / std::fmax(1, plot_max_output())
     };
 
     draw_function = true;

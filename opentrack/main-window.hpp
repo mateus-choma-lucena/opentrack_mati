@@ -144,6 +144,8 @@ public:
     void create_empty_profile();
     void create_copied_profile();
     void open_profile_directory();
+    void import_profile();
+    void export_profile();
 
     void ensure_tray();
     void toggle_restore_from_tray(QSystemTrayIcon::ActivationReason e);

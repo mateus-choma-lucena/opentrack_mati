@@ -43,6 +43,10 @@ public:
     void set_mapping_overlay(bool enabled,double gain);
     double adjusted_output_for_input(double input) const;
     bool mapping_overlay_enabled() const { return overlay_enabled; }
+    void set_comparison(const base_spline* original);
+    void set_calibration_visuals(double physical_limit,double deadzone,double output_limit,int branch_sign=1);
+    void set_preview_bounds(double input,double output);
+    double comparison_output_for_input(double input) const;
 
     QColor colorBezier() const;
     void setColorBezier(QColor const& color);
@@ -109,6 +113,11 @@ private:
     bool draw_function = true, preview_only = false;
     bool overlay_enabled=false;
     double overlay_gain=1.;
+    const base_spline* comparison=nullptr;
+    double physical_marker=0, deadzone_marker=0, output_marker=0, preview_x=0, preview_y=0;
+    int branch_sign=1;
+    double plot_max_input() const {return preview_x>0?preview_x:config->max_input();}
+    double plot_max_output() const {return preview_y>0?preview_y:config->max_output();}
 
     // point's circle radius on the widget
     static constexpr int point_size_in_pixels_ = 5;

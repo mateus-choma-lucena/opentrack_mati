@@ -10,6 +10,8 @@
 #include <cassert>
 
 #include "main-window.hpp"
+#include "enhanced/smart-mapping.hpp"
+#include <QFileDialog>
 #include "logic/pipeline.hpp"
 #include "options/options.hpp"
 #include "new_file_dialog.h"
@@ -193,6 +195,8 @@ void main_window::init_profiles()
     // profile menu
     profile_menu.addAction(tr("Create new empty config"), this, &main_window::create_empty_profile);
     profile_menu.addAction(tr("Create new copied config"), this, &main_window::create_copied_profile);
+    profile_menu.addAction(tr("Import INI profile…"),this,&main_window::import_profile);
+    profile_menu.addAction(tr("Export saved INI profile…"),this,&main_window::export_profile);
     profile_menu.addAction(tr("Open configuration directory"), this, &main_window::open_profile_directory);
     ui.profile_button->setMenu(&profile_menu);
 
@@ -402,6 +406,21 @@ void main_window::create_copied_profile()
 void main_window::open_profile_directory()
 {
     QDesktopServices::openUrl("file:///" + QDir::toNativeSeparators(ini_directory()));
+}
+
+void main_window::import_profile()
+{
+    const auto source=QFileDialog::getOpenFileName(this,tr("Import OpenTrack profile"),ini_directory(),tr("OpenTrack profiles (*.ini)"));if(source.isEmpty())return;
+    QString name;if(!profile_name_from_dialog(name))return;
+    const auto destination=ini_combine(name);const auto error=enhanced::calibration::copy_profile_file(source,destination);
+    if(!error.isEmpty())QMessageBox::warning(this,tr("Import profile"),error);
+    else {refresh_profile_list();QMessageBox::information(this,tr("Import profile"),tr("Imported as %1. Select it from the profile list when tracking is stopped.").arg(name));}
+}
+void main_window::export_profile()
+{
+    const auto destination=QFileDialog::getSaveFileName(this,tr("Export saved OpenTrack profile"),ini_filename(),tr("OpenTrack profiles (*.ini)"));if(destination.isEmpty())return;
+    const auto error=enhanced::calibration::copy_profile_file(ini_pathname(),destination,true);
+    if(!error.isEmpty())QMessageBox::warning(this,tr("Export profile"),error);
 }
 
 void main_window::refresh_profile_list()
@@ -826,6 +845,23 @@ void main_window::show_mapping_window()
         if (work) return work->pipeline_.head_movement_snapshot();
         return {};
     };
+    mapping_widget->calibration_samples=[this](bool enabled,std::vector<enhanced::calibration::observation>& samples) {
+        if (!work) return false;
+        work->pipeline_.calibration_enable(enabled);
+        samples=work->pipeline_.calibration_drain();
+        return true;
+    };
+    mapping_widget->calibration_stop_tracking=[this] {
+        if (work) stop_tracker_();
+        return !work;
+    };
+    mapping_widget->calibration_center_tracking=[this] {
+        if (!work) return false;
+        work->pipeline_.set_center(true);
+        return true;
+    };
+    mapping_widget->new_mapping_profile_path=[this] {QString name;return profile_name_from_dialog(name)?ini_combine(name):QString{};};
+    mapping_widget->profiles_changed=[this]{refresh_profile_list();};
 }
 
 void main_window::exit(int status)
