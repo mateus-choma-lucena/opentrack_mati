@@ -1,4 +1,19 @@
 add_executable(enhanced-core-tests core.cpp)
+add_executable(neuralnet2-tests neuralnet2.cpp)
+target_compile_features(neuralnet2-tests PRIVATE cxx_std_20)
+target_include_directories(neuralnet2-tests PRIVATE "${CMAKE_SOURCE_DIR}")
+if(MSVC)
+    target_compile_options(neuralnet2-tests PRIVATE /W4 /EHsc)
+    target_compile_definitions(neuralnet2-tests PRIVATE _HAS_EXCEPTIONS=1)
+else()
+    target_compile_options(neuralnet2-tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+if(WIN32)
+    target_link_libraries(neuralnet2-tests PRIVATE psapi)
+endif()
+foreach(case steady jitter fast intervals stops reversal wrap quaternion spike translation persistent invalid loss long-loss recovery reliability gap disconnect recenter toggles disabled timestamp stages feature-toggles options filter prediction mapping benchmark)
+    add_test(NAME neuralnet2-${case} COMMAND neuralnet2-tests ${case})
+endforeach()
 add_executable(enhanced-head-controls-tests head-controls.cpp)
 target_compile_features(enhanced-head-controls-tests PRIVATE cxx_std_20)
 target_include_directories(enhanced-head-controls-tests PRIVATE "${CMAKE_SOURCE_DIR}")
@@ -53,14 +68,14 @@ if(TARGET opentrack-tracker-neuralnet AND TARGET opentrack-video)
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_INSTALL_PREFIX}"
         COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:enhanced-integration-tests>" "${CMAKE_INSTALL_PREFIX}"
     )
-    foreach(mode serial latest missing-runtime)
+    foreach(mode serial latest missing-runtime nn2-serial nn2-latest)
         add_test(NAME enhanced-plugin-${mode} COMMAND "${CMAKE_INSTALL_PREFIX}/enhanced-integration-tests${CMAKE_EXECUTABLE_SUFFIX}" "${CMAKE_INSTALL_PREFIX}" ${mode})
         set_tests_properties(enhanced-plugin-${mode} PROPERTIES TIMEOUT 30 ENVIRONMENT
             "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>"
         )
     endforeach()
     if(WIN32)
-        set_tests_properties(enhanced-plugin-serial enhanced-plugin-latest enhanced-plugin-missing-runtime PROPERTIES ENVIRONMENT_MODIFICATION
+        set_tests_properties(enhanced-plugin-serial enhanced-plugin-latest enhanced-plugin-missing-runtime enhanced-plugin-nn2-serial enhanced-plugin-nn2-latest PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;PATH=path_list_prepend:${CMAKE_INSTALL_PREFIX};PATH=path_list_prepend:${CMAKE_INSTALL_PREFIX}/modules"
         )
     endif()
@@ -92,7 +107,7 @@ if(TARGET opentrack-user-interface AND TARGET opentrack-filter-enhanced-adaptive
     if(MSVC)
         target_compile_definitions(enhanced-pipeline-controls-tests PRIVATE _HAS_EXCEPTIONS=1)
     endif()
-    foreach(mode adaptive fallback)
+    foreach(mode adaptive fallback nn2-adaptive nn2-fallback)
         add_test(NAME enhanced-head-pipeline-${mode} COMMAND enhanced-pipeline-controls-tests "${CMAKE_INSTALL_PREFIX}" ${mode})
         set_tests_properties(enhanced-head-pipeline-${mode} PROPERTIES TIMEOUT 30 ENVIRONMENT
             "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>"

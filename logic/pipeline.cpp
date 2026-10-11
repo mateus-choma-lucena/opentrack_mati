@@ -558,7 +558,7 @@ void pipeline::logic()
         // Prediction belongs after the selected filter, before response curves and output mapping.
         enhanced::pose measured;
         std::copy_n(static_cast<const double*>(value), 6, measured.begin());
-        motion_predictor.update(measured, current_sample.captured, enhanced::finite(measured));
+        motion_predictor.update(measured, current_sample.captured, enhanced::finite(measured) && current_sample.prediction_allowed);
         const auto prediction = motion_predictor.predict(enhanced::clock::now(),
             { *enhanced_opts.prediction_enabled, *enhanced_opts.prediction_ms,
               *enhanced_opts.max_rotation, *enhanced_opts.max_translation }, current_sample.confidence, measured);
@@ -632,14 +632,14 @@ ok:
 
     libs.pProtocol->pose(value, raw);
     const auto submitted = enhanced::clock::now();
-    if (current_output_is_sample && !hold_ordered && !b.get(f_zero))
+    if (current_output_is_sample && !current_sample.holding && !hold_ordered && !b.get(f_zero))
         libs.pTracker->output_finished(current_sample, submitted);
 
     enhanced::pose raw_diagnostic, processed_diagnostic;
     std::copy_n(static_cast<const double*>(raw), 6, raw_diagnostic.begin());
     std::copy_n(static_cast<const double*>(value), 6, processed_diagnostic.begin());
     const auto diagnostic = head_controls.snapshot(raw_diagnostic, processed_diagnostic, current_sample.captured, submitted,
-        current_output_is_sample && !hold_ordered && !b.get(f_zero));
+        current_output_is_sample && !current_sample.holding && !hold_ordered && !b.get(f_zero));
     libs.pTracker->head_movement_feedback(diagnostic);
 
     {

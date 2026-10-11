@@ -22,6 +22,7 @@
 #include "enhanced/latest-frame.hpp"
 #include "enhanced/reconnect.hpp"
 #include "enhanced/options.hpp"
+#include "enhanced/neuralnet2-options.hpp"
 
 #include <QDialog>
 #include <QHBoxLayout>
@@ -154,6 +155,7 @@ public:
     module_status start_tracker(QFrame* frame) override;
     void data(double* data) override;
     void data_with_info(double* data, tracking_sample_info& sample) override;
+    bool center() override;
     void enhanced_feedback(bool filter, double horizon, double rotation, double translation) override;
     void run() override;
     Affine pose();
@@ -185,6 +187,15 @@ private:
     QString get_posenet_filename() const;
 
     Settings settings_;
+    neuralnet2_settings nn2_settings_;
+    mutable enhanced::neuralnet_pipeline nn2_pipeline_;
+    mutable enhanced::neuralnet_result nn2_result_;
+    enhanced::neuralnet_parameters nn2_processed_parameters_; // protected by mtx_
+    std::optional<PoseEstimator::Face> pending_face_;
+    enhanced::pose pending_raw_{};
+    bool nn2_frame_enabled_ = false;
+    std::atomic<std::uint64_t> center_generation_{0};
+    bool center_pending_ = false; // protected by mtx_
     enhanced::telemetry telemetry_;
     enhanced::latest_frame<cv::Mat> frames_;
     enhanced::reconnect_state reconnect_state_;
@@ -252,6 +263,7 @@ private:
     Ui::Form ui_;
     Settings settings_;
     enhanced_settings enhanced_settings_;
+    neuralnet2_settings nn2_settings_;
     QLabel* diagnostics_label_ = nullptr;
     QLabel* camera_modes_label_ = nullptr;
     void make_enhanced_controls();

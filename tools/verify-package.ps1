@@ -9,7 +9,7 @@ $required = @(
     'modules/ps3eye-subprocess.exe', 'modules/libusb-1.0.dll',
     'modules/models/head-localizer.onnx', 'modules/models/head-pose-0.2-big.onnx',
     'modules/models/head-pose-0.2-small.onnx', 'modules/models/head-pose-0.5-big.onnx',
-    'modules/models/head-pose-0.5-small.onnx', 'doc/HEAD-MOVEMENT-CONTROLS.md'
+    'modules/models/head-pose-0.5-small.onnx', 'doc/HEAD-MOVEMENT-CONTROLS.md', 'doc/NEURALNET-2.md'
 )
 foreach ($relative in $required) {
     $file = Join-Path $packageRoot $relative

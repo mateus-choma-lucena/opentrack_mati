@@ -11,8 +11,13 @@ void enhanced_adaptive::filter_sample(const double* input, double* output, const
 
 void enhanced_adaptive::filter_sample_for_mapping(const double* input, double* output, double* target, const tracking_sample_info& sample)
 {
-    const enhanced::adaptive_parameters parameters{ *settings.adaptive_enabled, *settings.confidence_aware,
+    enhanced::adaptive_parameters parameters{ *settings.adaptive_enabled, *settings.confidence_aware,
         *settings.rotation_smoothing, *settings.translation_smoothing, *settings.responsiveness, *settings.jitter };
+    parameters.motion_aware=sample.motion_aware;
+    parameters.validated=sample.validated;
+    parameters.recovery_managed=sample.recovery_managed;
+    parameters.holding=sample.holding;
+    parameters.motion=sample.motion;
     enhanced::pose measurement;
     std::copy_n(input, 6, measurement.begin());
     std::lock_guard lock(mutex);

@@ -7,6 +7,11 @@ feature at a time when comparing it with your existing profile.
 
 ## Implemented software
 
+- **NeuralNet 2.0** adds optional raw temporal validation, time-based tracking recovery,
+  estimated reliability, motion metadata shared with the existing adaptive filter,
+  additive settings and diagnostics. It is disabled by default.
+  [NEURALNET-2.md](NEURALNET-2.md) records the processing order, recovery limits and tests.
+
 - **Head Movement Controls** add a master toggle, Amplification and Speed 0–100% sliders,
   live percentages, neutral Reset, axis overrides and response readouts in **Mapping**.
   Original/adjusted curve overlays preserve editable points and display output saturation.
@@ -49,7 +54,7 @@ feature at a time when comparing it with your existing profile.
 - Windows DirectShow cameras enumerate advertised format/FPS tuples and USB identity
   when exposed by the driver. Their existing native property pages provide device controls.
   Unsupported buffer-size requests are best effort; no unsupported modes are synthesized.
-- The existing Qt tracker settings contain Enhanced tabs: Performance, Adaptive Smoothness,
+- The existing Qt tracker settings contain Enhanced tabs: Performance, NeuralNet 2.0, Adaptive Smoothness,
   PS3 Eye Camera, Prediction and Diagnostics. Mapping owns Head Movement Controls.
   Settings use additive per-profile INI keys.
   Save/Cancel follows the existing options bundles; old profiles retain disabled defaults.

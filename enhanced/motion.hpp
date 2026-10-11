@@ -13,6 +13,8 @@ struct adaptive_parameters
     bool enabled = false, confidence_aware = false;
     double rotation_smoothing = 1., translation_smoothing = 1.;
     double responsiveness = 1., jitter = 1.;
+    bool motion_aware = false, validated = false, recovery_managed = false, holding = false;
+    motion_state motion = motion_state::stationary;
 };
 
 class adaptive_filter
@@ -32,6 +34,7 @@ public:
     {
         if (!finite(input) || (p.confidence_aware && confidence && (!std::isfinite(*confidence) || *confidence <= 0)))
         { lost = true; velocity = {}; return output; }
+        if (p.holding && initialized) { velocity = {}; return output; }
         if (!p.enabled) { guarded = output = previous = input; last = time; initialized = true; lost = recovery_phase = false; lag_ms.reset(); return output; }
         if (!initialized) { guarded = output = previous = input; last = time; initialized = true; return output; }
         if (time <= last) return output;
@@ -39,13 +42,15 @@ public:
         const bool recovering = lost || interval > .25;
         const double dt = std::clamp(interval, .001, .05);
         last = time;
-        if (recovering) { guarded = output; previous = input; velocity = {}; lost = false; recovery_phase = true; return output; }
+        if (recovering && !p.recovery_managed) { guarded = output; previous = input; velocity = {}; lost = false; recovery_phase = true; return output; }
+        if (recovering) { previous = input; velocity = {}; lost = recovery_phase = false; }
         bool outlier = false;
         for (std::size_t i=0; i<6; ++i)
         {
             const double change = std::abs(delta(input[i], previous[i], i));
             outlier |= change > (i<3 ? 50. : 120.) || (change > (i<3 ? 5. : 25.) && change/dt > (i<3 ? 500. : 1500.));
         }
+        if (p.validated) outlier=false;
         if (outlier && ++rejected < 3) return output;
         const bool forced_recovery = outlier;
         recovery_phase |= forced_recovery;
@@ -55,15 +60,19 @@ public:
         for (std::size_t i=0; i<6; ++i)
         {
             const double speed = delta(input[i], previous[i], i)/dt;
+            if (p.motion_aware && (p.motion==motion_state::stopping || p.motion==motion_state::reversing)) velocity[i]=0;
             velocity[i] += alpha(8., dt)*(speed-velocity[i]);
             const double strength = std::clamp(i<3 ? p.translation_smoothing : p.rotation_smoothing, 0., 5.);
             const double base = 1.5/(.25+strength);
-            const double cutoff = std::clamp(base + std::clamp(p.responsiveness, 0., 5.)*std::abs(velocity[i])*.35, base, 60.);
+            double cutoff = std::clamp(base + std::clamp(p.responsiveness, 0., 5.)*std::abs(velocity[i])*.35, base, 60.);
+            if (p.motion_aware && (p.motion==motion_state::rapid || p.motion==motion_state::stopping || p.motion==motion_state::reversing))
+                cutoff=std::max(cutoff,18.);
             lowest_cutoff = std::min(lowest_cutoff, cutoff*confidence_scale);
             double difference = delta(input[i], output[i], i);
-            const double band = std::clamp(p.jitter, 0., 5.)*(i<3 ? .015 : .08);
+            const double band = std::clamp(p.jitter, 0., 5.)*(i<3 ? .015 : .08)*
+                (p.motion_aware && p.motion==motion_state::stationary ? 1.25 : 1.);
             double guard_step=delta(input[i],guarded[i],i);
-            if (std::abs(speed) < (i<3 ? .5 : 2.))
+            if (std::abs(speed) < (i<3 ? .5 : 2.) || (p.motion_aware && p.motion==motion_state::stationary))
             {
                 difference = std::copysign(std::max(0., std::abs(difference)-band), difference);
                 guard_step=std::copysign(std::max(0.,std::abs(guard_step)-band),guard_step);

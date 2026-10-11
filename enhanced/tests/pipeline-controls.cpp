@@ -1,6 +1,7 @@
 #include "logic/pipeline.hpp"
 #include "gui/mapping-dialog.hpp"
 #include "enhanced/head-controls-ui.hpp"
+#include "enhanced/neuralnet2.hpp"
 #include <QApplication>
 #include <QTemporaryDir>
 #include <QLibrary>
@@ -20,6 +21,10 @@ struct source final : ITracker {
     pose value{2,3,4,10,8,5};
     timestamp captured=clock::now();
     double horizon=0;
+    bool neuralnet2=false;
+    neuralnet_pipeline validation;
+    timestamp processed{};
+    neuralnet_result latest;
     std::function<void()> after_filter;
     module_status start_tracker(QFrame*) override { return status_ok(); }
     void data(double* out) override { tracking_sample_info sample; data_with_info(out,sample); }
@@ -27,7 +32,19 @@ struct source final : ITracker {
         std::lock_guard lock(mutex);
         const auto now=clock::now(); if (milliseconds(captured,now)>=10) captured=now;
         std::copy(value.begin(),value.end(),out); sample={captured,{}};
+        if (neuralnet2) {
+            neuralnet_parameters config; config.enabled=true;
+            if (processed!=captured) { latest=validation.update(value,captured,now,config); processed=captured; }
+            else latest=validation.poll(now);
+            sample.captured=latest.captured; sample.neuralnet2=sample.validated=sample.motion_aware=sample.recovery_managed=true;
+            sample.holding=latest.holding; sample.recovering=latest.diagnostics.recovery_active;
+            sample.motion=latest.diagnostics.motion; sample.prediction_allowed=latest.prediction_allowed;
+            sample.estimated_reliability=latest.diagnostics.reliability;
+            if (latest.valid) std::copy(latest.value.begin(),latest.value.end(),out);
+            else std::fill_n(out,6,std::numeric_limits<double>::quiet_NaN());
+        }
     }
+    bool center() override { std::lock_guard lock(mutex); if (neuralnet2) { validation.reset(); processed={}; } return false; }
     void set(pose p) { std::lock_guard lock(mutex); value=p; }
     void enhanced_feedback(bool,double applied,double,double) override {
         std::function<void()> action;
@@ -70,7 +87,8 @@ int main(int argc,char** argv)
     auto& context=options::globals::detail::cur_settings();
     context.pathname="head.ini"; context.qsettings.emplace(temporary.filePath("head.ini"),QSettings::IniFormat); context.mtx.unlock();
     try {
-        const QString stage=QString::fromLocal8Bit(argv[1]); const bool adaptive=QString::fromLocal8Bit(argv[2])=="adaptive";
+        const QString stage=QString::fromLocal8Bit(argv[1]); const QString mode=QString::fromLocal8Bit(argv[2]);
+        const bool adaptive=mode.endsWith("adaptive"); const bool nn2=mode.startsWith("nn2-");
         enhanced_settings settings; settings.adaptive_enabled=true; settings.jitter=0.;
         main_settings main; main.center_at_startup=false; main.centering_mode=center_point; main.a_yaw.zero=3.;
         Mappings mappings(main.all_axis_opts);
@@ -80,6 +98,7 @@ int main(int argc,char** argv)
         require(std::abs(mapped-30)<.1,"nonlinear curve setup failed");
         runtime_libraries libraries;
         auto tracker=std::make_shared<source>(); auto protocol=std::make_shared<sink>(); auto legacy=std::make_shared<legacy_filter>();
+        tracker->neuralnet2=nn2;
         libraries.pTracker=tracker; libraries.pProtocol=protocol;
         QLibrary filter_library(QDir(stage).absoluteFilePath("modules/opentrack-filter-enhanced-adaptive"));
         if (adaptive) {
@@ -168,6 +187,19 @@ int main(int argc,char** argv)
             main.a_yaw.invert_pre=false; main.a_yaw.invert_post=false; main.a_yaw.altp=false;
             tracker->set({50,50,50,40,40,40}); wait_ms(300);
             require(protocol->read()[0]<=75&&protocol->read()[3]<=183&&protocol->read()[4]<=90,"actual protocol output exceeded amplified movement limits");
+            if (nn2) {
+                settings.prediction_enabled=true;
+                tracker->set({std::numeric_limits<double>::quiet_NaN(),0,0,0,0,0}); wait_ms(20);
+                { std::lock_guard lock(tracker->mutex); require(tracker->horizon==0,"real pipeline predicted held or invalid NN2 pose"); }
+                wait_ms(160);
+                { std::lock_guard lock(tracker->mutex); require(!tracker->latest.valid && tracker->latest.diagnostics.state==tracking_state::lost,"real pipeline retained lost validity"); }
+                // The prior target is (50,50,50) cm: at 100 cm/s its 86.6 cm
+                // return needs at least 866 ms plus confirmation, independent of FPS.
+                tracker->set({0,0,0,-30,0,0}); wait_ms(1250);
+                { std::lock_guard lock(tracker->mutex); require(tracker->latest.valid && tracker->latest.diagnostics.state==tracking_state::tracking,"actual pipeline reacquisition failed"); }
+                pipeline_.set_center(true); wait_ms(60);
+                require(std::abs(protocol->read()[3]-3)<.05,"NN2 recenter did not reset recovery/filter/prediction/mapping");
+            }
         }
         std::cout << (adaptive?"adaptive":"fallback") << " actual pipeline + mapped response + nonlinear/asymmetric curves + saturation + inversion + Mapping UI: PASS\n";
         return 0;

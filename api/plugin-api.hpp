@@ -25,6 +25,11 @@ struct tracking_sample_info
 {
     enhanced::timestamp captured{};
     std::optional<double> confidence;
+    // Estimated reliability is deliberately separate from model probability.
+    std::optional<double> estimated_reliability;
+    bool neuralnet2 = false, validated = false, holding = false, recovering = false;
+    bool motion_aware = false, prediction_allowed = true, recovery_managed = false;
+    enhanced::motion_state motion = enhanced::motion_state::stationary;
 };
 
 using Pose = Mat<double, 6, 1>;

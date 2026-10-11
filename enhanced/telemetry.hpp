@@ -57,6 +57,32 @@ struct head_controls_snapshot
     timestamp captured{}, submitted{}; // monotonic host timestamps, not wall-clock time
 };
 
+enum class tracking_state { tracking, suspect, lost, reacquiring };
+enum class motion_state { stationary, slow, rapid, stopping, reversing, unknown };
+inline const char* name(tracking_state state)
+{
+    switch (state) { case tracking_state::tracking: return "TRACKING"; case tracking_state::suspect: return "SUSPECT";
+    case tracking_state::lost: return "LOST"; case tracking_state::reacquiring: return "REACQUIRING"; }
+    return "LOST";
+}
+inline const char* name(motion_state state)
+{
+    switch (state) { case motion_state::stationary: return "stationary"; case motion_state::slow: return "slow";
+    case motion_state::rapid: return "rapid"; case motion_state::stopping: return "stopping";
+    case motion_state::reversing: return "reversing"; case motion_state::unknown: return "unavailable"; } return "unavailable";
+}
+struct neuralnet_snapshot
+{
+    bool enabled = false, raw_valid = false, output_valid = false, holding = false, recovery_active = false;
+    bool stabilization_requested = false, stabilization_active = false;
+    tracking_state state = tracking_state::lost;
+    motion_state motion = motion_state::unknown;
+    double reliability = 0, loss_duration_ms = 0, validation_ms = 0;
+    std::optional<double> capture_to_pose_ms;
+    timestamp raw_time{}, validated_time{};
+    std::uint64_t rejected = 0, spikes = 0, reacquisitions = 0;
+};
+
 struct snapshot
 {
     int width = 0, height = 0, requested_fps = 0;
@@ -69,6 +95,7 @@ struct snapshot
     bool valid = false, connected = false, internal_filter = false, adaptive_filter = false;
     double prediction_ms = 0, prediction_rotation = 0, prediction_translation = 0;
     head_controls_snapshot head;
+    neuralnet_snapshot neuralnet;
 };
 
 class telemetry
@@ -129,6 +156,8 @@ public:
     }
     void head_controls(const head_controls_snapshot& value)
     { std::lock_guard lock(mutex); state.head = value; }
+    void neuralnet(const neuralnet_snapshot& value)
+    { std::lock_guard lock(mutex); state.neuralnet = value; }
     snapshot read(timestamp now = clock::now()) const
     {
         std::lock_guard lock(mutex);

@@ -269,6 +269,7 @@ PoseEstimator::PoseEstimator(Ort::MemoryInfo& allocator_info, Ort::Session&& ses
 
 std::optional<PoseEstimator::Face> PoseEstimator::run(const cv::Mat& frame, const cv::Rect& box)
 {
+    invalid_output_=false;
     const int patch_size = std::max(box.width, box.height);
     if (patch_size <= 0 || patch_size > 4*std::max(frame.cols, frame.rows)) return {};
     const cv::Point2f patch_center = { std::clamp<float>(box.x + 0.5f * box.width, 0.f, frame.cols),
@@ -327,12 +328,14 @@ std::optional<PoseEstimator::Face> PoseEstimator::run(const cv::Mat& frame, cons
 
     const cv::Point2f center = patch_center + (0.5f * patch_size) * cv::Point2f{ output_coord_[0], output_coord_[1] };
     const float size = patch_size * 0.5f * output_coord_[2];
-    if (!(std::isfinite(center.x) && std::isfinite(center.y) && std::isfinite(size) && size > 0)) return {};
+    if (!(std::isfinite(center.x) && std::isfinite(center.y) && std::isfinite(size) && size > 0))
+    { invalid_output_=true; return {}; }
 
     // Following Eigen which uses quat components in the order w, x, y, z.
     // As does OpenCV
     cv::Quatf rotation = { output_quat_[3], output_quat_[0], output_quat_[1], output_quat_[2] };
-    if (!(std::isfinite(rotation.w) && std::isfinite(rotation.x) && std::isfinite(rotation.y) && std::isfinite(rotation.z)) || rotation.norm() < 1.e-6f) return {};
+    if (!(std::isfinite(rotation.w) && std::isfinite(rotation.x) && std::isfinite(rotation.y) && std::isfinite(rotation.z)) || rotation.norm() < 1.e-6f)
+    { invalid_output_=true; return {}; }
     rotation = rotation.normalize();
 
     // Should be lower triangular. If not maybe something is wrong with memory layout ... or the model.

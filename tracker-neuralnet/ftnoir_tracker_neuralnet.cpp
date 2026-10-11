@@ -374,6 +374,18 @@ public:
     GuardedThreadCountSwitch& operator=(const GuardedThreadCountSwitch&) = delete;
 };
 
+static enhanced::pose affine_to_output(const Affine& tmp)
+{
+    const auto& mx=tmp.R.col(0);
+    const auto& my=tmp.R.col(1);
+    const auto& mz=tmp.R.col(2);
+    const float yaw=std::atan2(mx(2),mx(0));
+    const float pitch=-std::atan2(-mx(1),std::sqrt(mx(2)*mx(2)+mx(0)*mx(0)));
+    const float roll=std::atan2(-mz(1),my(1));
+    constexpr double rad2deg=180/M_PI;
+    return {-tmp.t[2]*.1,tmp.t[1]*.1,-tmp.t[0]*.1,rad2deg*yaw,rad2deg*pitch,-rad2deg*roll};
+}
+
 bool NeuralNetTracker::detect()
 {
     double inference_time = 0.;
@@ -392,6 +404,9 @@ bool NeuralNetTracker::detect()
     {
         auto [p, rect] = localizer_->run(pyramid_.coarsest_greyscale());
         inference_time += localizer_->last_inference_time_millis();
+        if (nn2_frame_enabled_ && (!std::isfinite(p) || !std::isfinite(rect.x) || !std::isfinite(rect.y) ||
+            !std::isfinite(rect.width) || !std::isfinite(rect.height) || rect.width<=0 || rect.height<=0))
+        { p=0; rect={}; }
         
         if (rect.height < 16 && rect.width < 16)
         {
@@ -457,22 +472,42 @@ bool NeuralNetTracker::detect()
     {
         last_roi_.reset();
         draw_gizmos({}, {});
+        if (nn2_frame_enabled_ && poseestimator_->invalid_output())
+        { pending_raw_.fill(std::numeric_limits<double>::quiet_NaN()); pending_face_.reset(); return true; }
         return false;
     }
 
     // Transform to reference image
     *face = scaled(*face, 1.f / scale_factor);
 
+    if (nn2_frame_enabled_)
+    {
+        bool sane=std::isfinite(face->size) && face->size>0 && std::isfinite(face->center.x) && std::isfinite(face->center.y) &&
+            std::isfinite(face->box.x) && std::isfinite(face->box.y) && std::isfinite(face->box.width) &&
+            std::isfinite(face->box.height) && face->box.width>0 && face->box.height>0;
+        const auto q=face->rotation.toVec();
+        const double norm=q.dot(q);
+        sane &= std::isfinite(norm) && std::abs(norm-1)<.01;
+        if (*settings_.internal_filter_enabled && poseestimator_->has_uncertainty())
+            for (int i=0;i<9;++i) sane &= std::isfinite(face->rotaxis_cov_tril.val[i]) && std::isfinite(face->center_size_cov_tril.val[i]);
+        if (!sane)
+        {
+            pending_raw_.fill(std::numeric_limits<double>::quiet_NaN()); pending_face_.reset();
+            last_roi_.reset(); draw_gizmos({},{}); return true; // Count corrupt model output as rejected, never valid.
+        }
+    }
+
     cv::Rect2f roi = expand(face->box, (float)settings_.roi_zoom);
 
     last_roi_ = ewa_filter(*last_roi_, roi, float(settings_.roi_filter_alpha));
 
-    QuatPose pose = compute_filtered_pose(*face);
-    last_pose_ = pose;
+    QuatPose pose = nn2_frame_enabled_ ? transform_to_world_pose(face->rotation,face->center,face->size) : compute_filtered_pose(*face);
+    if (!nn2_frame_enabled_) last_pose_ = pose;
 
     Affine pose_affine = { pose.rot.toRotMat3x3(cv::QUAT_ASSUME_UNIT), pose.pos };
 
     pending_pose_affine_ = pose_affine;
+    if (nn2_frame_enabled_) pending_face_=*face;
 
     draw_gizmos(*face, pose_affine);
 
@@ -662,6 +697,7 @@ void NeuralNetTracker::run()
         if (capture_thread_.joinable()) capture_thread_.join();
     } };
 
+    std::uint64_t handled_generation=0;
     while (!isInterruptionRequested())
     {
         is_visible_ = check_is_visible();
@@ -671,10 +707,19 @@ void NeuralNetTracker::run()
             ? frames_.take(frame_copy_, captured, std::chrono::milliseconds(100))
             : acquire(frame_copy_, captured);
         if (!acquired) continue;
+        auto nn2_parameters=nn2_settings_.parameters();
+        if (nn2_frame_enabled_!=nn2_parameters.enabled) last_pose_.reset();
+        nn2_frame_enabled_=nn2_parameters.enabled;
+        if (low_latency_) nn2_parameters.max_age_ms=std::clamp(*settings_.max_frame_age,5.,500.);
+        const auto generation=center_generation_.load();
+        if (generation!=handled_generation) { last_pose_.reset(); handled_generation=generation; }
+        pending_face_.reset();
         const auto processing_start = enhanced::clock::now();
         if (low_latency_ && enhanced::stale(captured, processing_start, std::clamp(*settings_.max_frame_age, 5., 500.)))
         {
-            telemetry_.discarded(true); invalidate_tracking(); continue;
+            telemetry_.discarded(true); invalidate_tracking();
+            { QMutexLocker lock(&mtx_); nn2_result_=nn2_pipeline_.update({},captured,processing_start,nn2_parameters,capture_valid_.load()); }
+            continue;
         }
         frame_dt_ = current_frame_time_ == enhanced::timestamp{} ? 0 : enhanced::milliseconds(current_frame_time_, captured)*.001;
         if (frame_dt_ > .25) last_pose_.reset();
@@ -691,19 +736,62 @@ void NeuralNetTracker::run()
         bool tracked = false;
         try { tracked = detect(); }
         catch (const std::exception& e) { qWarning() << "NeuralNet processing failed:" << e.what(); }
-        if (!tracked) { invalidate_tracking(); last_pose_.reset(); }
+        const bool estimated=tracked;
+        if (!tracked && !nn2_frame_enabled_) { invalidate_tracking(); last_pose_.reset(); }
         const auto finished = enhanced::clock::now();
         if (low_latency_ && enhanced::stale(captured, finished, std::clamp(*settings_.max_frame_age, 5., 500.)))
         { telemetry_.discarded(true); tracked = false; invalidate_tracking(); }
         {
             QMutexLocker lock(&mtx_);
             tracked = tracked && capture_valid_.load() && captured.time_since_epoch().count() > invalidated_at_.load();
-            if (tracked) { last_pose_affine_ = pending_pose_affine_; published_frame_time_ = captured; }
+            if (nn2_frame_enabled_ && generation!=center_generation_.load())
+            { tracked=false; last_pose_.reset(); }
+            const auto validation_start=enhanced::clock::now();
+            nn2_processed_parameters_=nn2_parameters;
+            double covariance_ms=0;
+            if (nn2_frame_enabled_)
+            {
+                if (estimated && pending_face_) pending_raw_=affine_to_output(pending_pose_affine_);
+                const bool current_generation=generation==center_generation_.load();
+                const bool current_camera=capture_valid_.load() && captured.time_since_epoch().count()>invalidated_at_.load();
+                nn2_result_=nn2_pipeline_.update(estimated && current_generation ? std::optional<enhanced::pose>(pending_raw_) : std::nullopt,
+                    captured,finished,nn2_parameters,current_camera,[this,&covariance_ms](const enhanced::pose& raw) {
+                        if (!pending_face_) return raw;
+                        const auto covariance_start=enhanced::clock::now();
+                        enhanced::pose output;
+                        try
+                        {
+                            const auto filtered=compute_filtered_pose(*pending_face_);
+                            const Affine affine{filtered.rot.toRotMat3x3(cv::QUAT_ASSUME_UNIT),filtered.pos};
+                            output=affine_to_output(affine);
+                            if (enhanced::finite(output)) { last_pose_=filtered; last_pose_affine_=affine; }
+                        }
+                        catch (const std::exception& e)
+                        { qWarning() << "NeuralNet covariance filter failed:" << e.what(); output.fill(std::numeric_limits<double>::quiet_NaN()); }
+                        covariance_ms=enhanced::milliseconds(covariance_start,enhanced::clock::now());
+                        return output;
+                    });
+                if (!nn2_result_.accepted) last_pose_.reset();
+                tracked=nn2_result_.valid;
+                published_frame_time_=nn2_result_.captured;
+                nn2_pipeline_.validation_time(std::max(0.,enhanced::milliseconds(validation_start,enhanced::clock::now())-covariance_ms));
+                nn2_pipeline_.publication_time(enhanced::clock::now());
+                nn2_result_=nn2_pipeline_.poll(enhanced::clock::now(),capture_valid_.load());
+                tracked=nn2_result_.valid;
+                if (tracked && !nn2_result_.holding) center_pending_=false;
+            }
+            else
+            {
+                nn2_result_=nn2_pipeline_.update(tracked ? std::optional<enhanced::pose>(affine_to_output(pending_pose_affine_)) : std::nullopt,
+                    captured,finished,nn2_parameters,capture_valid_.load());
+                if (tracked) { last_pose_affine_ = pending_pose_affine_; published_frame_time_ = captured; }
+            }
+            telemetry_.neuralnet(nn2_result_.diagnostics);
             tracking_valid_ = tracked;
         }
         double inference_ms;
         { QMutexLocker lock(&stats_mtx_); inference_ms = inference_time_; }
-        telemetry_.processed(captured, processing_start, finished, inference_ms, tracked, *settings_.internal_filter_enabled);
+        telemetry_.processed(captured, processing_start, enhanced::clock::now(), inference_ms, tracked, *settings_.internal_filter_enabled);
 
         if (is_visible_)
         {
@@ -718,6 +806,33 @@ void NeuralNetTracker::invalidate_tracking()
 {
     QMutexLocker lock(&mtx_);
     tracking_valid_ = false;
+    nn2_result_=nn2_pipeline_.poll(enhanced::clock::now(),capture_valid_.load());
+}
+
+bool NeuralNetTracker::center()
+{
+    if (*nn2_settings_.enabled)
+    {
+        QMutexLocker lock(&mtx_);
+        if (!center_pending_)
+        {
+            const auto now=enhanced::clock::now();
+            nn2_pipeline_.poll(now,capture_valid_.load());
+            const auto measurement=nn2_pipeline_.validated_measurement(now);
+            ++center_generation_; nn2_pipeline_.reset(); nn2_result_={};
+            // Center on the actual validated measurement, not an intermediate recovery
+            // output. Otherwise the next real pose would jump away from the new center.
+            if (measurement && capture_valid_.load())
+            {
+                auto config=nn2_settings_.parameters();
+                if (low_latency_) config.max_age_ms=std::clamp(*settings_.max_frame_age,5.,500.);
+                nn2_result_=nn2_pipeline_.update(measurement->first,measurement->second,now,config,capture_valid_.load());
+                nn2_processed_parameters_=config;
+            }
+            tracking_valid_=nn2_result_.valid; center_pending_=true;
+        }
+    }
+    return false; // The existing application centering transform still owns recentering.
 }
 
 bool NeuralNetTracker::acquire(cv::Mat& dest, enhanced::timestamp& captured)
@@ -811,6 +926,21 @@ void NeuralNetTracker::data_with_info(double* data, tracking_sample_info& sample
     {
         QMutexLocker lock(&mtx_);
         sample = {published_frame_time_, {}};
+        if (*nn2_settings_.enabled)
+        {
+            nn2_result_=nn2_pipeline_.poll(enhanced::clock::now(),capture_valid_.load());
+            const auto& result=nn2_result_;
+            sample.captured=result.captured;
+            sample.neuralnet2=true; sample.validated=nn2_processed_parameters_.validation;
+            sample.estimated_reliability=result.diagnostics.reliability;
+            sample.holding=result.holding; sample.recovering=result.diagnostics.recovery_active;
+            sample.motion_aware=result.diagnostics.stabilization_requested;
+            sample.recovery_managed=nn2_processed_parameters_.recovery;
+            sample.motion=result.diagnostics.motion; sample.prediction_allowed=result.prediction_allowed;
+            if (result.valid && result.diagnostics.enabled) std::copy(result.value.begin(),result.value.end(),data);
+            else std::fill_n(data,6,std::numeric_limits<double>::quiet_NaN());
+            return;
+        }
         const double maximum_age = low_latency_ ? std::clamp(*settings_.max_frame_age, 5., 500.) : 1000.;
         if (!tracking_valid_ || enhanced::stale(published_frame_time_, enhanced::clock::now(), maximum_age))
         {
@@ -820,30 +950,8 @@ void NeuralNetTracker::data_with_info(double* data, tracking_sample_info& sample
         tmp = last_pose_affine_;
     }
 
-    const auto& mx = tmp.R.col(0);
-    const auto& my = tmp.R.col(1);
-    const auto& mz = tmp.R.col(2);
-
-    // For reference: https://en.wikipedia.org/wiki/Euler_angles. Section "Rotation matrix". The relevant matrix is
-    // under "Tait-Bryan angles", row with "Y_alpha Z_beta X_gamma = ...".
-    // Because for the NN tracker x is forward, and y is up. We can see that the x axis is independent of roll. Thus it
-    // is relatively easy to figure out the yaw and pitch angles (alpha and beta).
-    const float yaw = std::atan2(mx(2), mx(0));
-    const float pitch = -std::atan2(-mx(1), std::sqrt(mx(2) * mx(2) + mx(0) * mx(0)));
-    // For the roll angle we recognize that the matrix entries in the second row contain cos(pitch)*cos(roll), and
-    // cos(pitch)*sin(roll). Using atan2 eliminates the common pitch factor and we obtain the roll angle.
-    const float roll = std::atan2(-mz(1), my(1));
-    {
-        constexpr double rad2deg = 180 / M_PI;
-        data[Yaw] = rad2deg * yaw;
-        data[Pitch] = rad2deg * pitch;
-        data[Roll] = -rad2deg * roll;
-
-        // convert to cm
-        data[TX] = -tmp.t[2] * 0.1;
-        data[TY] = tmp.t[1] * 0.1;
-        data[TZ] = -tmp.t[0] * 0.1;
-    }
+    const auto output=affine_to_output(tmp);
+    std::copy(output.begin(),output.end(),data);
 }
 
 void NeuralNetTracker::enhanced_feedback(bool filter, double horizon, double rotation, double translation)
@@ -1044,7 +1152,18 @@ void NeuralNetDialog::status_poll()
             .arg(d.prediction_ms, 0, 'f', 1).arg(d.prediction_rotation, 0, 'f', 2).arg(d.prediction_translation, 0, 'f', 3)
             + tr("\nHost capture to protocol submission: %1 ms; P50 / P95 / P99: %2 / %3 / %4 ms")
                 .arg(number(d.application_ms), number(d.application_p50_ms), number(d.application_p95_ms), number(d.application_p99_ms))
-            + '\n' + enhanced_ui::head_diagnostics_text(d.head));
+            + '\n' + enhanced_ui::head_diagnostics_text(d.head)
+            + tr("\nNeuralNet 2.0: %1; state: %2; estimated reliability: %3 (not model confidence)\n"
+                "Rejected / spikes / reacquisition attempts (session totals): %4 / %5 / %6\n"
+                "Current loss: %7 ms; motion: %8; hold: %9; recovery: %10\n"
+                "Raw / validated host timestamp: %11 / %12 ms; capture-to-pose age: %13 ms; validation/recovery: %14 ms\n"
+                "Motion stabilization requested / adaptive filter active: %15 / %16")
+                .arg(d.neuralnet.enabled ? tr("on") : tr("off"),QString::fromLatin1(enhanced::name(d.neuralnet.state)))
+                .arg(d.neuralnet.reliability,0,'f',3).arg(qulonglong(d.neuralnet.rejected)).arg(qulonglong(d.neuralnet.spikes))
+                .arg(qulonglong(d.neuralnet.reacquisitions)).arg(d.neuralnet.loss_duration_ms,0,'f',1)
+                .arg(QString::fromLatin1(enhanced::name(d.neuralnet.motion))).arg(d.neuralnet.holding).arg(d.neuralnet.recovery_active)
+                .arg(enhanced_ui::stamp_text(d.neuralnet.raw_time),enhanced_ui::stamp_text(d.neuralnet.validated_time),number(d.neuralnet.capture_to_pose_ms))
+                .arg(d.neuralnet.validation_ms,0,'f',4).arg(d.neuralnet.stabilization_requested).arg(d.neuralnet.stabilization_active));
     }
     else if (!tracker_) diagnostics_label_->setText(tr("Tracker offline; measurements unavailable."));
 }

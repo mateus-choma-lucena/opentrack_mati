@@ -61,6 +61,7 @@ public:
     cv::Mat last_network_input() const;
     double last_inference_time_millis() const;
     bool has_uncertainty() const { return has_uncertainty_; }
+    bool invalid_output() const { return invalid_output_; }
     cv::Size input_image_size() const;
 private:
     std::string get_network_input_name(size_t i) const;
@@ -87,6 +88,7 @@ private:
     double last_inference_time_ = 0;
     bool has_uncertainty_ = false;
     bool pos_scale_uncertainty_is_matrix_ = false;
+    bool invalid_output_ = false;
 };
 
 // Finds the intensity where x percent of pixels have less intensity than that.

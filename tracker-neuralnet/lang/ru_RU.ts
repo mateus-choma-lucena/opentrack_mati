@@ -208,6 +208,15 @@ Host capture to protocol submission: %1 ms; P50 / P95 / P99: %2 / %3 / %4 ms</so
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>
+NeuralNet 2.0: %1; state: %2; estimated reliability: %3 (not model confidence)
+Rejected / spikes / reacquisition attempts (session totals): %4 / %5 / %6
+Current loss: %7 ms; motion: %8; hold: %9; recovery: %10
+Raw / validated host timestamp: %11 / %12 ms; capture-to-pose age: %13 ms; validation/recovery: %14 ms
+Motion stabilization requested / adaptive filter active: %15 / %16</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Tracker offline; measurements unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -271,6 +280,114 @@ Host capture to protocol submission: %1 ms; P50 / P95 / P99: %2 / %3 / %4 ms</so
     </message>
     <message>
         <source>Maximum consecutive retries</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NeuralNet 2.0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable NeuralNet 2.0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optional temporal validation and recovery. Disabled by default; existing profiles keep their original processing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pose Validation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rejects corrupt poses and isolated jumps using acquisition time and short pose history. A continuous second sample can confirm fast movement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Motion-Aware Stabilization</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shares motion state with the enabled Enhanced Adaptive Filter. Select that filter and enable it to activate smoothing; no additional tracker smoother is stacked.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tracking Recovery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Time-based TRACKING / SUSPECT / LOST / REACQUIRING states. Short holds retain the original timestamp; prediction stops during holds and recovery.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reliability-Based Protection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uses observed continuity and frame age for conservative stationary-history protection. Estimated reliability is not calibrated NeuralNet confidence.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spike Rejection Strength</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Higher values detect smaller isolated jumps. Continuous movement is confirmed without permanently clamping it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recovery Responsiveness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scales confirmation time and bounded quaternion/translation recovery speed. 1.0 is the conservative default.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hold Duration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maximum hold since the last good pose and the first failed observation. 0 disables holding. Camera disconnect never holds a pose.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Angular velocity limit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> degrees/s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Translation velocity limit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> cm/s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Suspect to lost timeout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reacquisition confirmation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recovery blend duration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maximum pose age (serial capture)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial mode age limit. Latest-frame mode uses Maximum host frame age from Performance. All timestamps start at host receipt, not sensor exposure.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

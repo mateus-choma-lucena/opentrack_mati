@@ -1,4 +1,5 @@
 #include "enhanced/options.hpp"
+#include "enhanced/neuralnet2-options.hpp"
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QSettings>
@@ -25,6 +26,10 @@ int main(int argc, char** argv)
     context.mtx.unlock();
     try {
         enhanced_settings settings;
+        neuralnet2_settings nn2;
+        if (*nn2.enabled || !*nn2.validation || !*nn2.recovery || *nn2.hold_ms!=50.)
+            throw std::runtime_error("NeuralNet 2.0 defaults unsafe for old profiles");
+        nn2.enabled=true; nn2.hold_ms=35.; nn2.angular_velocity=900.; nn2.b->save();
         if (*settings.adaptive_enabled || *settings.prediction_enabled || *settings.head_enabled || *settings.amplification!=42 || *settings.speed!=55)
             throw std::runtime_error("new behavior defaults not neutral/disabled");
         settings.prediction_ms = 12.5; settings.prediction_enabled = true; settings.rotation_smoothing = 2.5;
@@ -34,6 +39,11 @@ int main(int argc, char** argv)
         settings.b->save();
         context.qsettings->sync();
         QSettings disk(path, QSettings::IniFormat);
+        if (!disk.value("neuralnet-tracker/nn2-enabled").toBool() || disk.value("neuralnet-tracker/nn2-hold-ms").toDouble()!=35.)
+            throw std::runtime_error("NeuralNet 2.0 additive keys not saved");
+        nn2.enabled=false; nn2.hold_ms=0.; nn2.b->reload();
+        if (!*nn2.enabled || *nn2.hold_ms!=35. || *nn2.angular_velocity!=900.)
+            throw std::runtime_error("NeuralNet 2.0 cancel/reload failed");
         if (disk.value("neuralnet-tracker/camera-name").toString()!="Existing PS3 Eye profile" || disk.value("legacy-plugin/private-setting").toInt()!=1234)
             throw std::runtime_error("saving new settings changed existing profile keys");
         if (disk.value("enhanced-tracking/prediction-ms").toDouble() != 12.5 || !disk.value("enhanced-tracking/prediction-enabled").toBool())
