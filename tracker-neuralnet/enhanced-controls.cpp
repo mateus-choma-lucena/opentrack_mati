@@ -15,6 +15,8 @@ namespace neuralnet_tracker_ns {
 enhanced::snapshot NeuralNetTracker::diagnostics() const
 {
     auto result = telemetry_.read();
+    if (!capture_valid_.load() || enhanced::stale(result.flow.captured,enhanced::clock::now(),30)) result.flow.valid=false;
+    { std::lock_guard flow_lock(flow_mutex_); if (!flow_anchor_.valid) result.flow.valid=false; }
     // Validity reflects the sample actually available to the output pipeline.
     QMutexLocker lock(&mtx_);
     if (*nn2_settings_.enabled)
@@ -80,6 +82,20 @@ void NeuralNetDialog::make_enhanced_controls()
     auto* advanced_form=new QFormLayout(advanced_widget); advanced_widget->setVisible(false);
     connect(advanced,&QGroupBox::toggled,advanced_widget,&QWidget::setVisible);
     nn2->addRow(advanced);
+    auto* flow=new QComboBox;
+    flow->setObjectName("opticalFlowMode"); flow->addItems({tr("Off"),tr("Experimental")});
+    nn2->addRow(tr("Optical Flow"),flow);tie_setting(experimental_.flow_mode,flow);
+    flow->setToolTip(tr("Facial-region sparse Lucas–Kanade image motion. Can conservatively damp prediction between trusted poses; does not reconstruct 3D rotation. Disabled by default."));
+    auto* quality=new QComboBox;quality->addItems({tr("Fast (32 points)"),tr("Balanced (48 points)"),tr("Accurate (80 points)")});
+    nn2->addRow(tr("Optical Flow Quality"),quality);tie_setting(experimental_.flow_quality,quality);
+    enhanced_ui::number(nn2,tr("Fusion Strength"),experimental_.fusion_strength,0,1)->setToolTip(tr("Reliability-weighted damping of the single prediction stage, bounded to 30%. No intermediate frames means no correction."));
+    auto* reset=new QPushButton(tr("Reset Experimental Features"));reset->setObjectName("resetExperimentalFeatures");nn2->addRow(reset);
+    connect(reset,&QPushButton::clicked,this,[this] {
+        experimental_.flow_mode=0;experimental_.flow_quality=1;experimental_.fusion_strength=.25;
+        experimental_.analyzer=false;experimental_.recording=false;experimental_.recording_seconds=30.;
+        enhanced_settings_.dynamic_prediction=false;enhanced_settings_.dynamic_max_ms=15.;
+        refresh_analyzer();
+    });
     enhanced_ui::number(advanced_form,tr("Angular velocity limit"),nn2_settings_.angular_velocity,90,3600,tr(" degrees/s"));
     enhanced_ui::number(advanced_form,tr("Translation velocity limit"),nn2_settings_.translation_velocity,10,1000,tr(" cm/s"));
     enhanced_ui::number(advanced_form,tr("Suspect to lost timeout"),nn2_settings_.suspect_ms,20,500,tr(" ms"));
@@ -103,6 +119,10 @@ void NeuralNetDialog::make_enhanced_controls()
     enhanced_ui::number(prediction, tr("Prediction horizon"), enhanced_settings_.prediction_ms, 0, 15, tr(" ms"));
     enhanced_ui::number(prediction, tr("Maximum angular extrapolation"), enhanced_settings_.max_rotation, 0, 10, tr(" degrees"));
     enhanced_ui::number(prediction, tr("Maximum translation extrapolation"), enhanced_settings_.max_translation, 0, 2, tr(" cm"));
+    enhanced_ui::check(prediction,tr("Dynamic Prediction 2.0"),enhanced_settings_.dynamic_prediction)->setToolTip(
+        tr("Uses measured host frame age, speed, noise and estimated reliability. Overrides the manual horizon while enabled. No prediction during loss, stops or reversal; no display-latency claim."));
+    enhanced_ui::number(prediction,tr("Maximum Prediction Horizon"),enhanced_settings_.dynamic_max_ms,0,15,tr(" ms"));
+    make_analyzer_controls(page(tr("Live Analyzer")));
 
     auto* diagnostics = page(tr("Diagnostics"));
     enhanced_ui::check(diagnostics, tr("Show performance measurements"), settings_.diagnostics);
@@ -125,6 +145,7 @@ void NeuralNetDialog::make_enhanced_controls()
         stream << "width,height,requested_fps,capture_delivery_fps,inference_pipeline_fps,inference_ms,host_frame_age_ms,host_processing_ms,p50_ms,p95_ms,p99_ms,captured,processed,queue_replacements,stale_frames,backend_sequence_gaps,reconnections,tracking_valid,adaptive_active,prediction_ms,prediction_degrees,prediction_cm,application_ms,application_p50_ms,application_p95_ms,application_p99_ms,output_samples,head_enabled,head_transitioning,amplification_percent,effective_global_gain,speed_percent,effective_responsiveness,shared_response,fallback_response,estimated_smoothing_time_constant_ms,sample_capture_monotonic_ms,output_monotonic_ms,head_output_valid";
         stream << ",nn2_enabled,nn2_tracking_state,nn2_estimated_reliability,nn2_rejected_total,nn2_spikes_total,nn2_reacquisitions_total,nn2_loss_duration_ms,nn2_motion,nn2_raw_timestamp_ms,nn2_validated_timestamp_ms,nn2_capture_to_pose_age_ms,nn2_validation_ms,nn2_recovery_active,nn2_raw_valid,nn2_output_valid,nn2_holding,nn2_stabilization_requested,nn2_stabilization_active";
         stream << ",head_per_axis";
+        stream << ",flow_enabled,flow_valid,flow_timestamp_ms,flow_anchor_ms,flow_speed_px_s,flow_reliability,flow_drift_px,flow_cpu_ms,flow_points,flow_rejected,flow_resets";
         for (const auto* prefix : {"effective_gain", "raw", "protocol", "mapped_target", "response_cutoff_hz", "movement_limit"})
             for (const auto* axis : {"x","y","z","yaw","pitch","roll"}) stream << ',' << prefix << '_' << axis;
         stream << '\n';
@@ -145,6 +166,8 @@ void NeuralNetDialog::make_enhanced_controls()
             << n.validation_ms << ',' << n.recovery_active << ',' << n.raw_valid << ',' << n.output_valid << ',' << n.holding << ','
             << n.stabilization_requested << ',' << n.stabilization_active;
         stream << ',' << d.head.per_axis;
+        stream << ',' << d.flow.enabled << ',' << d.flow.valid << ',' << enhanced_ui::stamp_text(d.flow.captured) << ',' << enhanced_ui::stamp_text(d.flow.anchor) << ','
+            << d.flow.speed_px_s << ',' << d.flow.reliability << ',' << d.flow.drift_px << ',' << d.flow.cpu_ms << ',' << d.flow.points << ',' << d.flow.rejected << ',' << qulonglong(d.flow.resets);
         for (const auto& values : {d.head.gains,d.head.raw,d.head.processed,d.head.mapped_target,d.head.response_cutoffs,d.head.limits}) for (double value : values) stream << ',' << value;
         stream << '\n';
         stream.flush();

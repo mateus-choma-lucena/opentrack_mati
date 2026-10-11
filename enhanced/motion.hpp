@@ -1,4 +1,5 @@
 #pragma once
+#include "flow.hpp"
 #include "telemetry.hpp"
 #include <limits>
 
@@ -100,47 +101,65 @@ struct prediction_parameters
 {
     bool enabled = false;
     double horizon_ms = 8., max_rotation = 3., max_translation = .5;
+    bool dynamic = false;
+    double max_horizon_ms = 15.;
+    motion_state motion = motion_state::unknown;
 };
-struct predicted_pose { pose value{}; double horizon_ms = 0, rotation = 0, translation = 0; };
+struct predicted_pose { pose value{}; double horizon_ms = 0, rotation = 0, translation = 0; pose flow_correction{}; };
 
 class predictor
 {
-    pose previous{}, velocity{}, noise{};
+    pose previous{}, velocity{}, noise{}, instantaneous{};
+    std::array<bool,6> reversal{};
     timestamp last{};
     bool initialized = false, ready = false;
 public:
     void reset() { *this = {}; }
     void update(const pose& input, timestamp time, bool valid)
     {
-        if (!valid || !finite(input)) { reset(); return; }
+        if (!valid || !finite(input) || time==timestamp{}) { reset(); return; }
         if (initialized && time <= last) return;
         const double dt = std::chrono::duration<double>(time-last).count();
         if (!initialized || dt > .15)
-        { previous = input; velocity = noise = {}; last = time; initialized = true; ready = false; return; }
+        { previous = input; velocity = noise = instantaneous = {}; reversal={}; last = time; initialized = true; ready = false; return; }
         ready = dt >= .001;
         if (ready)
             for (std::size_t i=0; i<6; ++i)
             {
                 const double v = delta(input[i], previous[i], i)/dt;
-                const bool reversal = v*velocity[i] < 0;
+                reversal[i] = v*velocity[i] < 0;
+                instantaneous[i]=v;
                 const bool implausible = std::abs(v) > (i<3 ? 200. : 720.);
                 noise[i] += alpha(5., dt)*(std::abs(v-velocity[i])-noise[i]);
-                velocity[i] = reversal || implausible ? 0. : velocity[i]+alpha(15., dt)*(v-velocity[i]);
+                velocity[i] = reversal[i] || implausible ? 0. : velocity[i]+alpha(15., dt)*(v-velocity[i]);
             }
         previous = input; last = time;
     }
-    predicted_pose predict(timestamp now, prediction_parameters p, std::optional<double> confidence = {}, std::optional<pose> base = {}) const
+    predicted_pose predict(timestamp now, prediction_parameters p, std::optional<double> confidence = {}, std::optional<pose> base = {},
+                           std::optional<double> reliability = {}, flow_assistance flow = {}) const
     {
         predicted_pose result{base.value_or(previous)};
         if (!p.enabled || !ready || stale(last, now, 100) || (confidence && (!std::isfinite(*confidence) || *confidence <= 0))) return result;
         // Fixed horizon from the measurement, never accumulates across repeated output polls.
-        const double horizon = std::clamp(p.horizon_ms, 0., 15.);
+        if (!std::isfinite(p.horizon_ms) || !std::isfinite(p.max_horizon_ms) || !std::isfinite(p.max_rotation) || !std::isfinite(p.max_translation)) return result;
+        if (p.dynamic && reliability && (!std::isfinite(*reliability) || *reliability<=0)) return result;
+        if (p.dynamic && (p.motion==motion_state::stopping || p.motion==motion_state::reversing)) return result;
+        double speed=0;
+        for (std::size_t i=0;i<6;++i) speed=std::max(speed,std::abs(instantaneous[i])/(i<3?10.:45.));
+        const double horizon = p.dynamic ? std::min(milliseconds(last,now),std::clamp(p.max_horizon_ms,0.,15.))*std::clamp(speed,0.,1.)
+                                         : std::clamp(p.horizon_ms, 0., 15.);
         const double conf = confidence ? std::clamp(*confidence, 0., 1.) : 1.;
+        if (horizon<=0) return result;
+        const double trust=p.dynamic && reliability ? std::clamp(*reliability,0.,1.) : 1.;
+        const double damping=flow_damping(flow,last,now);
         for (std::size_t i=0; i<6; ++i)
         {
             const double attenuation = std::abs(velocity[i])/(std::abs(velocity[i])+noise[i]+(i<3 ? .5 : 2.));
             const double limit = std::clamp(i<3 ? p.max_translation : p.max_rotation, 0., i<3 ? 2. : 10.);
-            const double offset = std::clamp(velocity[i]*horizon*.001*attenuation*conf, -limit, limit);
+            const double stop=p.dynamic && (reversal[i] || std::abs(instantaneous[i])<(i<3?.5:2.)) ? 0. : 1.;
+            const double baseline = std::clamp(velocity[i]*horizon*.001*attenuation*conf*trust*stop, -limit, limit);
+            const double offset=baseline*damping;
+            result.flow_correction[i]=offset-baseline;
             result.value[i] += offset;
             if (i>=3) result.value[i] = std::remainder(result.value[i], 360.);
             auto& maximum = i<3 ? result.translation : result.rotation;

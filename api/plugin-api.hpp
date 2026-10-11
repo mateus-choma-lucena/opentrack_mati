@@ -20,6 +20,7 @@
 #include "../compat/tr.hpp"
 #include "export.hpp"
 #include "enhanced/telemetry.hpp"
+#include "enhanced/analyzer.hpp"
 
 struct tracking_sample_info
 {
@@ -30,6 +31,7 @@ struct tracking_sample_info
     bool neuralnet2 = false, validated = false, holding = false, recovering = false;
     bool motion_aware = false, prediction_allowed = true, recovery_managed = false;
     enhanced::motion_state motion = enhanced::motion_state::stationary;
+    enhanced::flow_assistance flow;
 };
 
 using Pose = Mat<double, 6, 1>;
@@ -228,6 +230,7 @@ struct OTR_API_EXPORT ITracker
     virtual void enhanced_feedback(bool, double, double, double) {}
     virtual std::optional<enhanced::snapshot> performance_snapshot() const { return {}; }
     virtual void output_finished(const tracking_sample_info&, enhanced::timestamp) {}
+    virtual void analysis_output(const tracking_sample_info&, const enhanced::pose&, const enhanced::predicted_pose&, enhanced::timestamp) {}
     virtual void head_movement_feedback(const enhanced::head_controls_snapshot&) {}
     // tracker notified of centering
     // returning true makes identity the center pose

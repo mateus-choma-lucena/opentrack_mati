@@ -48,6 +48,8 @@ cv::Size get_input_image_shape(const Ort::Session& session)
     const std::vector<std::int64_t> shape = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
     if (shape.size() != 4)
         throw std::invalid_argument("Model takes the input tensor in the wrong shape");
+    if ((shape[0]!=1 && shape[0]!=-1) || shape[1]!=1 || shape[2]<=0 || shape[3]<=0)
+        throw std::invalid_argument("Model must accept one grayscale image with fixed spatial dimensions");
     return { static_cast<int>(shape[3]), static_cast<int>(shape[2]) };
 }
 
@@ -236,7 +238,14 @@ PoseEstimator::PoseEstimator(Ort::MemoryInfo& allocator_info, Ort::Session&& ses
         if (my_tensor_spec_it != understood_outputs.end())
         {
             TensorSpec& t = my_tensor_spec_it->second;
-            if (onnx_tensor_spec.GetShape() != t.shape || onnx_tensor_spec.GetElementType() != Ort::TypeToTensorType<float>::type)
+            auto resolved_shape=onnx_tensor_spec.GetShape();
+            // Older shipped models expose a symbolic batch dimension when
+            // graph optimization is disabled. The input tensor always has B=1;
+            // only that dimension may be symbolic. All payload dimensions and
+            // data types remain strict and output storage retains its fixed size.
+            if (resolved_shape.size()==t.shape.size() && !resolved_shape.empty() && resolved_shape[0]==-1)
+                resolved_shape[0]=1;
+            if (resolved_shape != t.shape || onnx_tensor_spec.GetElementType() != Ort::TypeToTensorType<float>::type)
                 throw std::runtime_error("Invalid output tensor spec for "s + name);
             output_val_.push_back(Ort::Value::CreateTensor<float>(allocator_info, t.buffer, t.element_count, t.shape.data(), t.shape.size()));
             t.available = true;

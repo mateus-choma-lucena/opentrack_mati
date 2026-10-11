@@ -25,6 +25,7 @@ public:
     std::pair<float, cv::Rect2f> run(const cv::Mat& frame);
 
     double last_inference_time_millis() const;
+    std::array<const void*,3> buffer_addresses() const { return {scaled_frame_.data,input_mat_.data,results_.data()}; }
 
 private:
     inline static constexpr int INPUT_IMG_WIDTH = 288;
@@ -62,6 +63,7 @@ public:
     double last_inference_time_millis() const;
     bool has_uncertainty() const { return has_uncertainty_; }
     bool invalid_output() const { return invalid_output_; }
+    std::array<const void*,3> buffer_addresses() const { return {cropped_.data,scaled_frame_.data,input_mat_.data}; }
     cv::Size input_image_size() const;
 private:
     std::string get_network_input_name(size_t i) const;

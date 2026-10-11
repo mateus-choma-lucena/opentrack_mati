@@ -1,5 +1,6 @@
 #include "enhanced/options.hpp"
 #include "enhanced/neuralnet2-options.hpp"
+#include "enhanced/experimental-options.hpp"
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QSettings>
@@ -26,6 +27,10 @@ int main(int argc, char** argv)
     context.mtx.unlock();
     try {
         enhanced_settings settings;
+        experimental_settings experiment;
+        if(*experiment.flow_mode || *experiment.analyzer || *experiment.recording || *settings.dynamic_prediction) throw std::runtime_error("experiments enabled in old profiles");
+        experiment.flow_mode=1;experiment.flow_quality=2;experiment.fusion_strength=.6;experiment.analyzer=true;experiment.recording_seconds=20.;experiment.b->save();
+        settings.dynamic_prediction=true;settings.dynamic_max_ms=11.;
         neuralnet2_settings nn2;
         if (*nn2.enabled || !*nn2.validation || !*nn2.recovery || *nn2.hold_ms!=50.)
             throw std::runtime_error("NeuralNet 2.0 defaults unsafe for old profiles");
@@ -54,6 +59,9 @@ int main(int argc, char** argv)
         settings.prediction_ms = 1.; settings.prediction_enabled = false;
         settings.head_enabled=false; settings.amplification=42; settings.speed=55; settings.per_axis=false; settings.amplification_yaw=42;
         settings.b->reload();
+        experiment.flow_mode=0;experiment.analyzer=false;experiment.b->reload();
+        if(*experiment.flow_mode!=1 || *experiment.flow_quality!=2 || *experiment.fusion_strength!=.6 || !*experiment.analyzer || *experiment.recording_seconds!=20. || !*settings.dynamic_prediction || *settings.dynamic_max_ms!=11.)
+            throw std::runtime_error("experimental settings persistence failed");
         if (*settings.prediction_ms != 12.5 || !*settings.prediction_enabled || *settings.rotation_smoothing != 2.5)
             throw std::runtime_error("cancel/reload did not restore saved values");
         if (!*settings.head_enabled || *settings.amplification!=80 || *settings.speed!=20 || !*settings.per_axis

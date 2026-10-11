@@ -217,6 +217,12 @@ Motion stabilization requested / adaptive filter active: %15 / %16</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>
+Experimental image flow: %1; valid: %2; points / rejected: %3 / %4
+Speed: %5 px/s; reliability: %6; drift: %7 px; CPU: %8 ms; resets: %9</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Tracker offline; measurements unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -353,6 +359,50 @@ Motion stabilization requested / adaptive filter active: %15 / %16</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Experimental</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optical Flow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Facial-region sparse Lucas–Kanade image motion. Can conservatively damp prediction between trusted poses; does not reconstruct 3D rotation. Disabled by default.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast (32 points)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Balanced (48 points)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accurate (80 points)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optical Flow Quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fusion Strength</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reliability-weighted damping of the single prediction stage, bounded to 30%. No intermediate frames means no correction.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Experimental Features</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Angular velocity limit</source>
         <translation type="unfinished"></translation>
     </message>
@@ -429,6 +479,22 @@ Motion stabilization requested / adaptive filter active: %15 / %16</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Dynamic Prediction 2.0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uses measured host frame age, speed, noise and estimated reliability. Overrides the manual horizon while enabled. No prediction during loss, stops or reversal; no display-latency claim.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maximum Prediction Horizon</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live Analyzer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Diagnostics</source>
         <translation type="unfinished"></translation>
     </message>
@@ -450,6 +516,46 @@ Motion stabilization requested / adaptive filter active: %15 / %16</source>
     </message>
     <message>
         <source>Frame age and latency begin at host receipt. Processing ends at pose publication; application latency ends after the first protocol submission of each sample. Camera buffering, exposure, USB/output transit and display latency are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Analyzer disabled; a stopped recording remains available for export.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blue: yaw; orange: pitch; purple: roll. Dropped telemetry updates: %1; live ring replacements: %2. %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recording stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live Tracking Analyzer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Record time series</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recording duration (maximum 4096 samples)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Recording (CSV)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export tracking recording</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

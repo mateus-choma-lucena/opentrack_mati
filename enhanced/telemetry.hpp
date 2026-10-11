@@ -83,6 +83,14 @@ struct neuralnet_snapshot
     std::uint64_t rejected = 0, spikes = 0, reacquisitions = 0;
 };
 
+struct flow_observation
+{
+    bool enabled=false, valid=false;
+    timestamp captured{}, anchor{};
+    double dx=0, dy=0, speed_px_s=0, reliability=0, drift_px=0, cpu_ms=0;
+    unsigned points=0, rejected=0;
+    std::uint64_t resets=0;
+};
 struct snapshot
 {
     int width = 0, height = 0, requested_fps = 0;
@@ -96,6 +104,7 @@ struct snapshot
     double prediction_ms = 0, prediction_rotation = 0, prediction_translation = 0;
     head_controls_snapshot head;
     neuralnet_snapshot neuralnet;
+    flow_observation flow;
 };
 
 class telemetry
@@ -143,6 +152,7 @@ public:
     {
         std::lock_guard lock(mutex);
         state.connected = state.valid = false;
+        state.flow.valid=false;
         state.prediction_ms = state.prediction_rotation = state.prediction_translation = 0;
         previous_capture = previous_process = {};
         capture_intervals = {}; processing_intervals = {};
@@ -158,6 +168,8 @@ public:
     { std::lock_guard lock(mutex); state.head = value; }
     void neuralnet(const neuralnet_snapshot& value)
     { std::lock_guard lock(mutex); state.neuralnet = value; }
+    void flow(const flow_observation& value) { std::lock_guard lock(mutex); state.flow=value; }
+    flow_observation flow() const { std::lock_guard lock(mutex); return state.flow; }
     snapshot read(timestamp now = clock::now()) const
     {
         std::lock_guard lock(mutex);

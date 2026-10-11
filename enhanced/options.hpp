@@ -12,6 +12,8 @@ struct enhanced_settings : options::opts
     options::value<bool> confidence_aware{b, "confidence-aware", false};
     options::value<bool> debug{b, "debug", false};
     options::value<bool> prediction_enabled{b, "prediction-enabled", false};
+    options::value<bool> dynamic_prediction{b, "dynamic-prediction-enabled", false};
+    options::value<double> dynamic_max_ms{b, "dynamic-prediction-max-ms", 15.};
     options::value<double> prediction_ms{b, "prediction-ms", 8.};
     options::value<double> max_rotation{b, "prediction-max-rotation", 3.};
     options::value<double> max_translation{b, "prediction-max-translation", .5};

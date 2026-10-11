@@ -38,6 +38,7 @@ if(OpenCV_FOUND AND ONNXRuntime_FOUND AND OpenMP_FOUND)
         opencv_imgproc
         opencv_imgcodecs
         opencv_core
+        opencv_video
         OpenMP::OpenMP_CXX
         )
 

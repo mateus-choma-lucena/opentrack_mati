@@ -11,6 +11,7 @@
 #include <QFontDatabase>
 #include <QFont>
 #include <QTabWidget>
+#include <QComboBox>
 #include <QProcess>
 #include <QFile>
 #include <QSlider>
@@ -79,8 +80,9 @@ int main(int argc, char** argv)
         if (!child.waitForStarted(3000) || !child.waitForFinished(10000)) { child.kill(); child.waitForFinished(); return 1; }
         return child.exitStatus() == QProcess::NormalExit && child.exitCode() == 0 ? 0 : 1;
     }
-    const bool nn2 = mode=="nn2-latest" || mode=="nn2-serial";
-    const bool low_latency = mode == "latest" || mode=="nn2-latest";
+    const bool experimental=mode=="experimental";
+    const bool nn2 = mode=="nn2-latest" || mode=="nn2-serial" || experimental;
+    const bool low_latency = mode == "latest" || mode=="nn2-latest" || experimental;
     QTemporaryDir temporary;
     auto& global = options::globals::detail::global_settings();
     global.qsettings.emplace(temporary.filePath("globals.ini"),QSettings::IniFormat);
@@ -96,7 +98,11 @@ int main(int argc, char** argv)
     neural_settings->store_kv("force-fps",3); // Existing NeuralNet enum: fps_75
     neural_settings->store_kv("force-resolution",2); // Existing 640x480 mode
     neural_settings->store_kv("nn2-enabled",nn2);
+    neural_settings->store_kv("experimental-flow-mode",experimental?1:0);
+    neural_settings->store_kv("experimental-analyzer-enabled",experimental);
+    neural_settings->store_kv("experimental-analyzer-recording",experimental);
     neural_settings->store_kv("posenet-file",QDir(stage).absoluteFilePath("modules/models/head-pose-0.5-small.onnx"));
+    if(mode=="missing-model") neural_settings->store_kv("posenet-file",temporary.filePath("absent.onnx"));
     video::impl::register_camera(std::make_unique<fake_backend>());
     std::cerr << "Loading installed NeuralNet plugin\n";
     QLibrary library(QDir(stage).absoluteFilePath("modules/opentrack-tracker-neuralnet"));
@@ -104,11 +110,11 @@ int main(int argc, char** argv)
     const auto construct = reinterpret_cast<ITracker*(*)()>(library.resolve("GetConstructor"));
     const auto dialog_factory = reinterpret_cast<ITrackerDialog*(*)()>(library.resolve("GetDialog"));
     if (!construct || !dialog_factory) return 1;
+    QFrame frame; frame.resize(320,240); // Must outlive the tracker on every early exit.
     std::unique_ptr<ITracker> tracker(construct());
     std::cerr << "Starting synthetic camera\n";
-    QFrame frame; frame.resize(320,240);
     const auto status=tracker->start_tracker(&frame);
-    if (mode == "expect-runtime-failure")
+    if (mode == "expect-runtime-failure" || mode=="missing-model")
     {
         if (status.is_ok()) { std::cerr << "missing runtime unexpectedly initialized"; return 1; }
         std::cout << "Missing modules/onnxruntime.dll: clean initialization error, no abort: PASS\n";
@@ -146,7 +152,7 @@ int main(int argc, char** argv)
     dialog->grab().save(QDir(stage).absoluteFilePath("enhanced-settings-preview.png"));
     if (auto* tabs = dialog->findChild<QTabWidget*>("enhancedTabs"))
     {
-        if (tabs->count()!=6 || !dialog->findChild<QCheckBox*>("neuralnet2Enabled") || dialog->findChild<QWidget*>("headAmplification"))
+        if (tabs->count()!=7 || !dialog->findChild<QCheckBox*>("neuralnet2Enabled") || !dialog->findChild<QComboBox*>("opticalFlowMode") || dialog->findChild<QWidget*>("headAmplification"))
         { std::cerr << "Mapping controls duplicated in tracker dialog"; return 1; }
         for (int index=0; index<tabs->count(); ++index)
         {
@@ -183,8 +189,28 @@ int main(int argc, char** argv)
         scroll=qobject_cast<QScrollArea*>(tabs->widget(tabs->count()-1));
         scroll->verticalScrollBar()->setValue(scroll->verticalScrollBar()->maximum()); wait_ms(20);
         if (!dialog->grab().save(QDir(stage).absoluteFilePath("enhanced-settings-preview-nn2-diagnostics.png"))) return 1;
+        if(experimental) {
+            std::cerr<<"Checking analyzer export\n";
+            if(diagnostic->flow.valid || sample.flow.observation.valid) {std::cerr<<"Lost face retained flow";return 1;}
+            tabs->setCurrentIndex(5);wait_ms(300);
+            if(!dialog->grab().save(QDir(stage).absoluteFilePath("enhanced-settings-preview-analyzer.png")))return 1;
+            const auto recording_file=temporary.filePath("tracking-recording.csv");
+            QTimer::singleShot(50,[recording_file]{for(auto* widget:QApplication::topLevelWidgets())if(auto* file=qobject_cast<QFileDialog*>(widget)) {file->selectFile(recording_file);QMetaObject::invokeMethod(file,"accept",Qt::DirectConnection);}});
+            auto* export_record=dialog->findChild<QPushButton*>("exportTrackingRecording");if(!export_record)return 1;export_record->click();
+            QFile recording(recording_file);if(!recording.open(QIODevice::ReadOnly)){std::cerr<<"Recording open failed: "<<recording.errorString().toStdString()<<'\n';return 1;}
+            std::cerr<<"Checking recording rows\n";
+            const auto rows=recording.readAll().trimmed().split('\n');if(rows.size()<3)return 1;
+            const auto fields=rows[0].split(',');double previous=0;
+            for(int i=1;i<rows.size();++i){const auto row=rows[i].split(',');if(row.size()!=fields.size() || row[0].toDouble()<=previous)return 1;previous=row[0].toDouble();}
+            if(!fields.contains("flow_correction_yaw_deg") || !fields.contains("processing_ms"))return 1;
+            auto* reset=dialog->findChild<QPushButton*>("resetExperimentalFeatures");if(!reset)return 1;reset->click();
+            std::cerr<<"Checking experimental reset\n";
+            if(neural_settings->get_variant("experimental-flow-mode").toInt()!=0)return 1;
+            std::cout<<"Analyzer recording/export rows="<<rows.size()-1<<"; optional feature reset: PASS\n";
+        }
     }
     else { std::cerr << "Enhanced settings tabs missing"; return 1; }
+    std::cerr<<"Stopping installed tracker\n";
     dialog->unregister_tracker(); dialog.reset(); tracker.reset();
     std::cout << "Installed NeuralNet + synthetic capture/reconnect + diagnostics + Qt UI: PASS\n";
     return 0;

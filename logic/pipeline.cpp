@@ -560,9 +560,10 @@ void pipeline::logic()
         std::copy_n(static_cast<const double*>(value), 6, measured.begin());
         motion_predictor.update(measured, current_sample.captured, enhanced::finite(measured) && current_sample.prediction_allowed);
         const auto prediction = motion_predictor.predict(enhanced::clock::now(),
-            { *enhanced_opts.prediction_enabled, *enhanced_opts.prediction_ms,
-              *enhanced_opts.max_rotation, *enhanced_opts.max_translation }, current_sample.confidence, measured);
-        if (*enhanced_opts.prediction_enabled)
+            { *enhanced_opts.prediction_enabled || *enhanced_opts.dynamic_prediction, *enhanced_opts.prediction_ms,
+              *enhanced_opts.max_rotation, *enhanced_opts.max_translation, *enhanced_opts.dynamic_prediction,
+              *enhanced_opts.dynamic_max_ms, current_sample.neuralnet2 ? current_sample.motion : enhanced::motion_state::unknown }, current_sample.confidence, measured, current_sample.estimated_reliability, current_sample.flow);
+        if (*enhanced_opts.prediction_enabled || *enhanced_opts.dynamic_prediction)
         {
             for (int axis=0;axis<6;++axis)
                 response_pose(axis)+=enhanced::delta(prediction.value[axis],measured[axis],axis);
@@ -570,6 +571,7 @@ void pipeline::logic()
         }
         libs.pTracker->enhanced_feedback(libs.pFilter && libs.pFilter->enhanced_active(),
             prediction.horizon_ms, prediction.rotation, prediction.translation);
+        libs.pTracker->analysis_output(current_sample,measured,prediction,enhanced::clock::now());
         logger.write_pose(value); // "filtered"
     }
 

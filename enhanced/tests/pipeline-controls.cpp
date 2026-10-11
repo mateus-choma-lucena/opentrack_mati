@@ -21,6 +21,7 @@ struct source final : ITracker {
     pose value{2,3,4,10,8,5};
     timestamp captured=clock::now();
     double horizon=0;
+    pose analyzed_filtered{},analyzed_predicted{};
     bool neuralnet2=false;
     neuralnet_pipeline validation;
     timestamp processed{};
@@ -52,6 +53,9 @@ struct source final : ITracker {
         if (action) action();
     }
     void after_filter_once(std::function<void()> action) { std::lock_guard lock(mutex); after_filter=std::move(action); }
+    void analysis_output(const tracking_sample_info&,const pose& filtered,const predicted_pose& predicted,timestamp) override {
+        std::lock_guard lock(mutex);analyzed_filtered=filtered;analyzed_predicted=predicted.value;
+    }
 };
 struct sink final : IProtocol {
     std::mutex mutex;
@@ -140,6 +144,13 @@ int main(int argc,char** argv)
             settings.prediction_enabled=true; settings.prediction_ms=8.; settings.speed=100;
             for (int i=1;i<=20;++i) { tracker->set({2,3,4,20+i*.5,8,5}); wait_ms(10); }
             { std::lock_guard lock(tracker->mutex); require(tracker->horizon==8.,"Speed changed prediction horizon"); }
+            settings.dynamic_prediction=true;settings.dynamic_max_ms=0.;
+            for(int i=1;i<=5;++i){tracker->set({2,3,4,30+i*.5,8,5});wait_ms(10);}
+            {std::lock_guard lock(tracker->mutex);require(tracker->horizon==0 && tracker->analyzed_filtered==tracker->analyzed_predicted,"zero dynamic horizon changed real pipeline output");}
+            settings.dynamic_max_ms=6.;
+            for(int i=1;i<=5;++i){tracker->set({2,3,4,32.5+i*.5,8,5});wait_ms(10);}
+            {std::lock_guard lock(tracker->mutex);require(tracker->horizon<=6.,"dynamic horizon escaped maximum in mapped pipeline");}
+            settings.dynamic_prediction=false;
             pipeline_.set_zero(true); wait_ms(20); require(protocol->read()[3]==3.,"controls amplified fixed zero output"); pipeline_.set_zero(false);
             const auto original_points=mappings(3).spline_main.get_points();
             mapping_dialog dialog(mappings);

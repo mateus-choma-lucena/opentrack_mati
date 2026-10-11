@@ -6,6 +6,9 @@ No model, capture resolution, camera FPS selection, mapping curve, USB driver or
 is replaced. Settings use additive `nn2-*` keys in the existing `neuralnet-tracker` bundle.
 Save and Cancel use that bundle's existing persistence behavior.
 
+See [experimental flow, dynamic prediction and live analyzer](NEURALNET-2-EXPERIMENTS.md)
+for the independently switchable final-integration features and their validation limits.
+
 ## Actual processing order
 
 1. Camera host receipt timestamp → existing serial capture or single pending latest-frame slot.

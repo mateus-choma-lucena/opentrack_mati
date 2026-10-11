@@ -501,13 +501,17 @@ bool NeuralNetTracker::detect()
 
     last_roi_ = ewa_filter(*last_roi_, roi, float(settings_.roi_filter_alpha));
 
+    if (!nn2_frame_enabled_ && (*experimental_.analyzer || *experimental_.recording)) {
+        const auto raw=transform_to_world_pose(face->rotation,face->center,face->size);
+        pending_raw_=affine_to_output({raw.rot.toRotMat3x3(cv::QUAT_ASSUME_UNIT),raw.pos});
+    }
     QuatPose pose = nn2_frame_enabled_ ? transform_to_world_pose(face->rotation,face->center,face->size) : compute_filtered_pose(*face);
     if (!nn2_frame_enabled_) last_pose_ = pose;
 
     Affine pose_affine = { pose.rot.toRotMat3x3(cv::QUAT_ASSUME_UNIT), pose.pos };
 
     pending_pose_affine_ = pose_affine;
-    if (nn2_frame_enabled_) pending_face_=*face;
+    pending_face_=*face;
 
     draw_gizmos(*face, pose_affine);
 
@@ -585,6 +589,7 @@ NeuralNetTracker::~NeuralNetTracker()
 
 module_status NeuralNetTracker::start_tracker(QFrame* videoframe)
 {
+    analyzer_.configure(*experimental_.analyzer,*experimental_.recording,*experimental_.recording_seconds);
     // Set internal thread count as reference for initialization. It is used in 
     // several places and settings_.num_threads could theoretically change due
     // to concurrent accesses from other threads.
@@ -712,6 +717,7 @@ void NeuralNetTracker::run()
         nn2_frame_enabled_=nn2_parameters.enabled;
         if (low_latency_) nn2_parameters.max_age_ms=std::clamp(*settings_.max_frame_age,5.,500.);
         const auto generation=center_generation_.load();
+        const auto flow_generation=flow_generation_.load();
         if (generation!=handled_generation) { last_pose_.reset(); handled_generation=generation; }
         pending_face_.reset();
         const auto processing_start = enhanced::clock::now();
@@ -792,6 +798,36 @@ void NeuralNetTracker::run()
         double inference_ms;
         { QMutexLocker lock(&stats_mtx_); inference_ms = inference_time_; }
         telemetry_.processed(captured, processing_start, enhanced::clock::now(), inference_ms, tracked, *settings_.internal_filter_enabled);
+        enhanced::analysis_sample analysis;
+        analysis.captured=captured; analysis.published=enhanced::clock::now();
+        analysis.interval_ms=analysis_previous_capture_==enhanced::timestamp{}?0:enhanced::milliseconds(analysis_previous_capture_,captured);
+        analysis_previous_capture_=captured;
+        analysis.inference_ms=inference_ms; analysis.processing_ms=enhanced::milliseconds(captured,analysis.published);
+        bool trusted=false;
+        {
+            QMutexLocker lock(&mtx_);
+            analysis.valid=tracking_valid_; analysis.holding=nn2_result_.holding;
+            analysis.raw_valid=estimated && pending_face_ && enhanced::finite(affine_to_output(pending_pose_affine_));
+            analysis.raw=pending_raw_;
+            analysis.accepted=nn2_frame_enabled_?nn2_result_.value:affine_to_output(pending_pose_affine_);
+            analysis.validated=published_frame_time_;
+            analysis.reliability=nn2_frame_enabled_?nn2_result_.diagnostics.reliability:(tracked?1.:0.);
+            analysis.center_epoch=center_generation_.load();
+            trusted=tracked && analysis.raw_valid && enhanced::finite(analysis.accepted) && pending_face_ && !nn2_result_.holding && (!nn2_frame_enabled_ || nn2_result_.prediction_allowed);
+        }
+        {
+            std::lock_guard lock(flow_mutex_);
+            trusted=trusted && capture_valid_.load() && captured.time_since_epoch().count()>invalidated_at_.load() && flow_generation==flow_generation_.load();
+            if (trusted!=flow_anchor_.valid) ++flow_generation_;
+            flow_anchor_.valid=trusted; flow_anchor_.generation=flow_generation_.load();
+            flow_anchor_.captured=captured; flow_anchor_.reliability=analysis.reliability;
+            if (trusted) {
+                const auto b=pending_face_->box; const auto size=pyramid_.coarsest_greyscale().size();
+                flow_anchor_.normalized_roi={b.x/size.width,b.y/size.height,b.width/size.width,b.height/size.height};
+            }
+        }
+        analysis.flow=telemetry_.flow();
+        analyzer_.push(analysis);
 
         if (is_visible_)
         {
@@ -804,6 +840,7 @@ void NeuralNetTracker::run()
 
 void NeuralNetTracker::invalidate_tracking()
 {
+    { std::lock_guard lock(flow_mutex_); flow_anchor_.valid=false; ++flow_generation_; }
     QMutexLocker lock(&mtx_);
     tracking_valid_ = false;
     nn2_result_=nn2_pipeline_.poll(enhanced::clock::now(),capture_valid_.load());
@@ -811,6 +848,7 @@ void NeuralNetTracker::invalidate_tracking()
 
 bool NeuralNetTracker::center()
 {
+    if (*experimental_.flow_mode!=0) { std::lock_guard lock(flow_mutex_); flow_anchor_.valid=false; ++flow_generation_; }
     if (*nn2_settings_.enabled)
     {
         QMutexLocker lock(&mtx_);
@@ -853,7 +891,7 @@ bool NeuralNetTracker::acquire(cv::Mat& dest, enhanced::timestamp& captured)
             }
         }
     }
-    if (success) { capture_valid_.store(true); reconnect_state_.recovered(); return true; }
+    if (success) { capture_valid_.store(true); reconnect_state_.recovered(); process_flow(dest,captured); return true; }
     capture_valid_.store(false);
     invalidated_at_.store(enhanced::clock::now().time_since_epoch().count());
     invalidate_tracking(); telemetry_.disconnected(); frames_.clear();
@@ -926,6 +964,11 @@ void NeuralNetTracker::data_with_info(double* data, tracking_sample_info& sample
     {
         QMutexLocker lock(&mtx_);
         sample = {published_frame_time_, {}};
+        if (*experimental_.flow_mode!=0 && capture_valid_.load()) {
+            sample.flow={telemetry_.flow(),std::clamp(*experimental_.fusion_strength,0.,1.)};
+            std::lock_guard flow_lock(flow_mutex_);
+            if (!flow_anchor_.valid) sample.flow.observation.valid=false;
+        }
         if (*nn2_settings_.enabled)
         {
             nn2_result_=nn2_pipeline_.poll(enhanced::clock::now(),capture_valid_.load());
@@ -937,6 +980,7 @@ void NeuralNetTracker::data_with_info(double* data, tracking_sample_info& sample
             sample.motion_aware=result.diagnostics.stabilization_requested;
             sample.recovery_managed=nn2_processed_parameters_.recovery;
             sample.motion=result.diagnostics.motion; sample.prediction_allowed=result.prediction_allowed;
+            if (!result.prediction_allowed) sample.flow.observation.valid=false;
             if (result.valid && result.diagnostics.enabled) std::copy(result.value.begin(),result.value.end(),data);
             else std::fill_n(data,6,std::numeric_limits<double>::quiet_NaN());
             return;
@@ -1119,6 +1163,7 @@ void NeuralNetDialog::set_buttons_visible(bool x)
 
 void NeuralNetDialog::status_poll()
 {
+    refresh_analyzer();
     QString status;
     if (!tracker_)
     {
@@ -1163,7 +1208,10 @@ void NeuralNetDialog::status_poll()
                 .arg(qulonglong(d.neuralnet.reacquisitions)).arg(d.neuralnet.loss_duration_ms,0,'f',1)
                 .arg(QString::fromLatin1(enhanced::name(d.neuralnet.motion))).arg(d.neuralnet.holding).arg(d.neuralnet.recovery_active)
                 .arg(enhanced_ui::stamp_text(d.neuralnet.raw_time),enhanced_ui::stamp_text(d.neuralnet.validated_time),number(d.neuralnet.capture_to_pose_ms))
-                .arg(d.neuralnet.validation_ms,0,'f',4).arg(d.neuralnet.stabilization_requested).arg(d.neuralnet.stabilization_active));
+                .arg(d.neuralnet.validation_ms,0,'f',4).arg(d.neuralnet.stabilization_requested).arg(d.neuralnet.stabilization_active)
+            + tr("\nExperimental image flow: %1; valid: %2; points / rejected: %3 / %4\nSpeed: %5 px/s; reliability: %6; drift: %7 px; CPU: %8 ms; resets: %9")
+                .arg(d.flow.enabled).arg(d.flow.valid).arg(d.flow.points).arg(d.flow.rejected).arg(d.flow.speed_px_s,0,'f',1)
+                .arg(d.flow.reliability,0,'f',3).arg(d.flow.drift_px,0,'f',2).arg(d.flow.cpu_ms,0,'f',3).arg(qulonglong(d.flow.resets)));
     }
     else if (!tracker_) diagnostics_label_->setText(tr("Tracker offline; measurements unavailable."));
 }

@@ -23,6 +23,8 @@
 #include "enhanced/reconnect.hpp"
 #include "enhanced/options.hpp"
 #include "enhanced/neuralnet2-options.hpp"
+#include "enhanced/experimental-options.hpp"
+#include "optical-flow.hpp"
 
 #include <QDialog>
 #include <QHBoxLayout>
@@ -38,6 +40,7 @@
 #include <thread>
 #include <atomic>
 #include <QLabel>
+#include <QFormLayout>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -165,6 +168,10 @@ public:
     void head_movement_feedback(const enhanced::head_controls_snapshot& value) override { telemetry_.head_controls(value); }
     void output_finished(const tracking_sample_info& sample, enhanced::timestamp finished) override
     { telemetry_.output(sample.captured, finished); }
+    void analysis_output(const tracking_sample_info& sample, const enhanced::pose& filtered, const enhanced::predicted_pose& predicted, enhanced::timestamp time) override
+    { if (!sample.holding) analyzer_.output(sample.captured,filtered,predicted,time); }
+    void configure_analyzer(bool live, bool recording, double seconds) { analyzer_.configure(live,recording,seconds); }
+    enhanced::analysis_snapshot analysis(bool recording=false) const { return analyzer_.read(recording); }
 
     QMutex camera_mtx_;
     std::unique_ptr<video::impl::camera> camera_;
@@ -188,6 +195,14 @@ private:
 
     Settings settings_;
     neuralnet2_settings nn2_settings_;
+    experimental_settings experimental_;
+    enhanced::analyzer_buffer analyzer_;
+    optical_flow optical_flow_;
+    mutable std::mutex flow_mutex_;
+    flow_anchor flow_anchor_;
+    std::atomic<std::uint64_t> flow_generation_{0};
+    enhanced::timestamp analysis_previous_capture_{};
+    void process_flow(const cv::Mat& image, enhanced::timestamp time);
     mutable enhanced::neuralnet_pipeline nn2_pipeline_;
     mutable enhanced::neuralnet_result nn2_result_;
     enhanced::neuralnet_parameters nn2_processed_parameters_; // protected by mtx_
@@ -264,6 +279,11 @@ private:
     Settings settings_;
     enhanced_settings enhanced_settings_;
     neuralnet2_settings nn2_settings_;
+    experimental_settings experimental_;
+    QWidget* analyzer_widget_=nullptr;
+    QLabel* analyzer_status_=nullptr;
+    void refresh_analyzer();
+    void make_analyzer_controls(QFormLayout* form);
     QLabel* diagnostics_label_ = nullptr;
     QLabel* camera_modes_label_ = nullptr;
     void make_enhanced_controls();
