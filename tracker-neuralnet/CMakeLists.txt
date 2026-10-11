@@ -19,6 +19,17 @@ else()
 endif()
 
 if(OpenCV_FOUND AND ONNXRuntime_FOUND AND OpenMP_FOUND)
+    # Export the dependency configuration used by this build. CI links OpenCV
+    # statically, while development installations may use DLLs.
+    if(OpenCV_SHARED)
+        set(_opencv_linkage "shared")
+    else()
+        set(_opencv_linkage "static")
+    endif()
+    math(EXPR _runtime_pointer_bits "${CMAKE_SIZEOF_VOID_P} * 8")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/runtime-dependencies.json"
+        "{\n  \"schema\": 1,\n  \"pointer_bits\": ${_runtime_pointer_bits},\n  \"opencv_version\": \"${OpenCV_VERSION}\",\n  \"opencv_linkage\": \"${_opencv_linkage}\"\n}\n")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/runtime-dependencies.json" DESTINATION "${opentrack-doc}")
     if(MSVC)
         add_compile_options(-EHsc)
         add_definitions(-D_HAS_EXCEPTIONS=1)

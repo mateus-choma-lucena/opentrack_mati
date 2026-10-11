@@ -1,54 +1,70 @@
 #pragma once
 #include "enhanced/calibration-profile.hpp"
 #include "export.hpp"
-#include <QDialog>
+#include <QWizard>
 #include <QTimer>
 #include <functional>
-
+#include <map>
 class QLabel;
 class QPushButton;
 class QCheckBox;
 class QComboBox;
 class QTableWidget;
-class QStackedWidget;
-class calibration_preview;
-
-using calibration_input = std::function<bool(bool,std::vector<enhanced::calibration::observation>&)>;
-
-class OTR_GUI_EXPORT calibration_dialog final : public QDialog {
+class QProgressBar;
+class calibration_page;
+class smart_comparison;
+using calibration_input=std::function<bool(bool,std::vector<enhanced::calibration::observation>&)>;
+class OTR_GUI_EXPORT calibration_dialog final : public QWizard {
     Q_OBJECT
+public:
+    enum page_id {welcome,center_head,noise,left,right,up,down,optional,roll_left,roll_right,x_left,x_right,y_up,y_down,z_forward,z_backward,game_profile,compare,review,completion};
+    calibration_dialog(Mappings&,calibration_input,std::function<bool()> stop,std::function<bool()> center,QWidget* parent);
+    ~calibration_dialog() override;
+    std::function<QString()> new_profile_path;
+    std::function<bool(const enhanced::calibration::axis_selection&)> save_applied;
+    bool applied_to_current() const {return applied;}
+    bool persisted_to_current() const {return saved;}
+    enhanced::calibration::axis_selection selected_axes() const {return selection;}
+    const enhanced::calibration::record& draft_record() const {return data;}
+    int nextId() const override;
+    void reject() override;
+protected:
+    void initializePage(int) override;
+    bool validateCurrentPage() override;
+    void done(int) override;
+private:
+    struct recording_controls {QLabel* status{};QCheckBox* comfort{};QPushButton* record{};QProgressBar* progress{};};
     Mappings& mappings;
     calibration_input input;
-    std::function<bool()> stop_tracking;
-    std::function<bool()> center_tracking;
-    enhanced::calibration::record result;
+    std::function<bool()> stop_tracking,center_tracking;
+    enhanced::calibration::record data;
     enhanced::calibration::measurement measurement;
-    std::vector<std::pair<int,QString>> steps;
-    std::array<int,6> first_sign{};
+    std::map<int,enhanced::calibration::record> checkpoints;
+    std::map<int,recording_controls> recordings;
+    enhanced::calibration::axis_selection selection{};
     QTimer timer;
-    QStackedWidget* pages;
-    QLabel *instructions,*status,*review_stats,*review_validity;
-    QPushButton *record_button,*next_button,*apply_button;
-    QCheckBox *comfortable,*roll,*translation,*overwrite;
-    QComboBox *use_case,*preview_axis;
+    QWidget* live_banner;
+    QLabel *readiness,*live_pose,*stage,*review_stats,*review_validity,*finished,*optional_status;
+    QProgressBar* overall;
+    QCheckBox *roll,*translation,*overwrite;
+    QComboBox *game,*preview_axis,*style;
     QTableWidget* table;
-    calibration_preview* preview;
-    int step=0;
+    smart_comparison* comparison;
+    std::array<QCheckBox*,6> selected{};
     std::optional<std::uint64_t> baseline_epoch;
-    bool reviewing=false, updating=false, preview_valid=false;
-    bool applied=false;
-    enhanced::calibration::axis_selection applied_selection{};
-    enhanced::timestamp accept_after{};
+    enhanced::timestamp accept_after{},retry_since{},last_good{};
+    bool recording=false,waiting_retry=false,ready_camera=false,applied=false,saved=false,updating=false,preview_valid=false;
+    int skip_to=-1;
+    QString reset_message;
     void tick();
-    void begin();
-    void advance();
-    void show_step();
-    void review();
+    void enter_page(int);
+    void begin_recording(bool retry=false);
+    void update_recording();
+    void build_review();
     void regenerate();
-public:
-    std::function<QString()> new_profile_path;
-    bool applied_to_current() const {return applied;}
-    enhanced::calibration::axis_selection selected_axes() const {return applied_selection;}
-    calibration_dialog(Mappings& mappings,calibration_input input,std::function<bool()> stop_tracking,std::function<bool()> center_tracking,QWidget* parent);
-    ~calibration_dialog() override;
+    void choose_template();
+    bool apply_result();
+    void skip_optional();
+    static int recording_axis(int);
+    static int stage_number(int);
 };

@@ -10,6 +10,9 @@ to the existing Mapping editor, with original/adjusted curve overlays and output
 and stationary jitter, previews asymmetric mapping curves, and saves a rollback snapshot.
 [Smart Mapping](SMART-MAPPING.md) adds editable response styles, racing templates,
 measured recommendations, selected-axis saving and INI import/export.
+[OpenTrack Enhanced 2.1 guide](OPENTRACK-ENHANCED-2.1-GUIDE.md) covers the native wizard,
+PS3 Eye setup, backups and an LMU test. [Release validation](RELEASE-2.1-REPORT.md)
+records the actual local build, tests, package and performance results.
 
 opentrack is a program for tracking user's head rotation and transmitting it to flight simulation software and military-themed video games. Project home is located at <<https://github.com/opentrack/opentrack>>.
 

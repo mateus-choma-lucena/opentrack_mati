@@ -74,7 +74,8 @@ mapping_dialog::mapping_dialog(Mappings& m) : m(m), widgets{}
         // Commit any pending manual edits only after the user accepts the generated curves.
         calibration_dialog dialog(this->m,calibration_samples,calibration_stop_tracking,calibration_center_tracking,this);
         dialog.new_profile_path=new_mapping_profile_path;
-        if (dialog.exec()==QDialog::Accepted) {if(dialog.applied_to_current() && !enhanced::calibration::save_selected_mapping(this->m,calibration_profile,dialog.selected_axes(),enhanced_opts))QMessageBox::warning(this,tr("Profile"),tr("The profile could not be saved. Retry saving from Mapping."));if(profiles_changed)profiles_changed();}
+        dialog.save_applied=[this](const enhanced::calibration::axis_selection& axes){return enhanced::calibration::save_selected_mapping(this->m,calibration_profile,axes,enhanced_opts);};
+        if (dialog.exec()==QDialog::Accepted) {if(dialog.applied_to_current() && !dialog.persisted_to_current() && !enhanced::calibration::save_selected_mapping(this->m,calibration_profile,dialog.selected_axes(),enhanced_opts))QMessageBox::warning(this,tr("Profile"),tr("The profile could not be saved. Retry saving from Mapping."));if(profiles_changed)profiles_changed();}
         refresh_tab();
     });
     connect(smart,&QPushButton::clicked,this,[this] {

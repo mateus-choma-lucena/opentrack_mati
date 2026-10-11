@@ -237,13 +237,7 @@ jobs:
           $stage = Join-Path $env:GITHUB_WORKSPACE "stage"
           $zip = Join-Path $env:GITHUB_WORKSPACE "opentrack-enhanced-windows-x64.zip"
 
-          $packageFiles = Get-ChildItem -LiteralPath $stage |
-            Where-Object { $_.Name -notlike 'enhanced-*-tests.exe' -and $_.Name -notlike 'enhanced-*-preview*.png' -and $_.Name -notlike 'head-controls-*.png' }
-          Compress-Archive `
-            -LiteralPath $packageFiles.FullName `
-            -DestinationPath $zip `
-            -CompressionLevel Optimal `
-            -Force
+          tools/package-windows.ps1 -Stage $stage -Destination $zip
 
           if (!(Test-Path $zip)) {
             throw "ZIP packaging failed."

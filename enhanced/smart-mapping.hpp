@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QTemporaryDir>
+#include <QMap>
 
 namespace enhanced::calibration {
 inline double current_gain(const enhanced_settings& s,int axis) {
@@ -61,7 +62,9 @@ inline void write_head_controls(QSettings& destination,const enhanced_settings& 
 }
 inline bool save_selected_mapping(Mappings& mappings,const profile& calibration,const axis_selection& selected,const enhanced_settings& controls) {
     options::globals::detail::mark_ini_modified();
-    return options::globals::with_settings_object([&](QSettings& ini) {
+    const bool saved=options::globals::with_settings_object([&](QSettings& ini) {
+        QMap<QString,QVariant> before;
+        for(const auto& key:ini.allKeys())before.insert(key,ini.value(key));
         for(int i=0;i<6;++i)if(selected[i]) {
             const auto& map=mappings(i);const auto prefix=QString("opentrack-mappings/%1-").arg(map.opts.prefix());
             ini.setValue(map.name+"/points",QVariant::fromValue(map.spline_main.get_points()));
@@ -70,8 +73,20 @@ inline bool save_selected_mapping(Mappings& mappings,const profile& calibration,
             ini.setValue(prefix+"max-value",int(*map.opts.clamp_x_));ini.setValue(prefix+"max-output-value",int(*map.opts.clamp_y_));
         }
         ini.setValue("automatic-calibration/record",*calibration.data);ini.setValue("automatic-calibration/rollback",*calibration.rollback);ini.setValue("automatic-calibration/original",*calibration.original);
-        write_head_controls(ini,controls);ini.sync();return ini.status()==QSettings::NoError;
+        write_head_controls(ini,controls);
+        // QSettings instances for one file share their pending changes. Use a
+        // fresh status for each attempt: an earlier I/O error is sticky.
+        QSettings writer(ini.fileName(),ini.format());writer.sync();
+        if(writer.status()==QSettings::NoError)return true;
+        // Failed writes must not leave calibrated keys queued for a later sync.
+        for(const auto& key:ini.allKeys())if(!before.contains(key))ini.remove(key);
+        for(auto it=before.cbegin();it!=before.cend();++it)ini.setValue(it.key(),it.value());
+        return false;
     });
+    if(saved){auto& context=options::globals::detail::cur_settings();
+        if(context.qsettings->status()!=QSettings::NoError){const auto path=context.qsettings->fileName();const auto format=context.qsettings->format();context.qsettings.emplace(path,format);}
+        context.mtx.unlock();}
+    return saved;
 }
 inline axis_selection snapshot_selection(const QString& snapshot) {
     axis_selection selected{};const auto axes=QJsonDocument::fromJson(snapshot.toUtf8()).object()["axes"].toArray();

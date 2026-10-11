@@ -45,6 +45,7 @@ otr_install_misc("${opentrack-doc}" FILES NEURALNET-2.md)
 otr_install_misc("${opentrack-doc}" FILES NEURALNET-2-EXPERIMENTS.md)
 otr_install_misc("${opentrack-doc}" FILES AUTOMATIC-CALIBRATION.md)
 otr_install_misc("${opentrack-doc}" FILES SMART-MAPPING.md)
+otr_install_misc("${opentrack-doc}" FILES OPENTRACK-ENHANCED-2.1-GUIDE.md RELEASE-2.1-REPORT.md)
 
 otr_install_misc("${opentrack-doc}" FILES "README.md")
 otr_install_misc("${opentrack-doc}" FILES ".github/CONTRIBUTING.md")

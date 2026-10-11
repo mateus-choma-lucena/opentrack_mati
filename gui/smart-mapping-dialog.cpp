@@ -1,4 +1,5 @@
 #include "smart-mapping-dialog.hpp"
+#include "mapping-comparison.hpp"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
@@ -16,45 +17,6 @@
 
 using namespace enhanced::calibration;
 static const char* names[]={"X","Y","Z","Yaw","Pitch","Roll"};
-class smart_comparison final : public QWidget {
-    Q_DECLARE_TR_FUNCTIONS(smart_comparison)
-public:
-    std::array<spline,3> positive,negative;
-    axis_result data;
-    bool valid=false;
-    double limit=180;
-    QString units="degrees";
-    explicit smart_comparison(QWidget* parent) : QWidget(parent) {setMinimumHeight(185);for(auto* a:{&positive,&negative})for(auto& s:*a)private_spline(s);}
-    void set_axis(const axis_result& a,double output_limit,const QString& unit) {
-        data=a;limit=output_limit;units=unit;valid=a.calibrated;
-        for(int i=0;i<3 && valid;++i) {
-            auto variant=a;variant.style=response_style(i+1);
-            valid=generate(variant);
-            if(valid) {positive[i].set_points(qt_points(variant.positive_points));negative[i].set_points(qt_points(variant.negative_points));}
-        }
-        update();
-    }
-    void paintEvent(QPaintEvent*) override {
-        QPainter p(this);p.fillRect(rect(),palette().base());p.setRenderHint(QPainter::Antialiasing);
-        const QRectF box(56,28,width()-73,height()-75);p.setPen(palette().text().color());p.drawRect(box);
-        if(!valid)return;
-        const double xmin=-data.negative.magnitude*1.05,xmax=data.positive.magnitude*1.05;
-        const double ymax=std::max(data.target_positive,data.target_negative)*1.08;
-        const auto screen=[&](double x,double y){return QPointF(box.left()+(x-xmin)/(xmax-xmin)*box.width(),box.center().y()-y/ymax*box.height()/2);};
-        p.setPen(palette().mid().color());p.drawLine(screen(xmin,0),screen(xmax,0));p.drawLine(screen(0,-ymax),screen(0,ymax));
-        const QColor colors[]={QColor(30,120,70),QColor(40,100,210),QColor(190,65,155)};
-        for(int i=0;i<3;++i){QPainterPath path;for(int k=0;k<=1024;++k){const double x=xmin+(xmax-xmin)*k/1024;
-            const double y=enhanced::adjusted_mapping_output((x<0?negative[i]:positive[i]).get_value_no_save(x),data.output_gain,limit);
-            if(!k)path.moveTo(screen(x,y));else path.lineTo(screen(x,y));}
-            p.setPen(QPen(colors[i],2));p.drawPath(path);
-            p.drawText(55+i*190,19,QString::fromLatin1(style_name(response_style(i+1))));}
-        p.setPen(palette().text().color());
-        for(double x:{-data.negative.magnitude,0.,data.positive.magnitude})p.drawText(QRectF(screen(x,0).x()-35,box.bottom()+3,70,18),Qt::AlignCenter,QString::number(x,'f',1));
-        for(double y:{-data.target_negative,0.,data.target_positive})p.drawText(QRectF(0,screen(0,y).y()-9,52,18),Qt::AlignRight,QString::number(y,'f',1));
-        p.drawText(QRectF(0,height()-25,width(),24),Qt::AlignCenter,tr("Physical input (%1) → effective mapped target (%1); identical ranges, targets and gain").arg(units));
-    }
-};
-
 smart_mapping_dialog::smart_mapping_dialog(Mappings& m,std::function<bool()> stop,std::function<QString()> path,QWidget* parent,std::optional<record> measurements)
     :QDialog(parent),mappings(m),stop_tracking(std::move(stop)),new_profile_path(std::move(path)) {
     controls.set_raii_dtor_state(false);

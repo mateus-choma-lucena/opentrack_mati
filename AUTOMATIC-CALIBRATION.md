@@ -6,26 +6,34 @@ enable it or change any mapping points.
 
 ## Using the wizard
 
-1. Sit normally and look straight ahead. Choose a use case and optionally include
-   roll and X/Y/Z translations. Press **Record**; the existing Center operation
+1. Wait for camera readiness. Sit normally and look straight ahead. Press
+   **Record / Retry** on Center; the existing Center operation
    establishes neutral. Allow it to settle, then hold neutral for two seconds.
 2. Record at least four seconds of relaxed stationary tracking. Deliberate motion,
    large drift, or a large noise envelope requires a retry instead of a larger deadzone.
 3. Move gently left, right, up, and down. **Move first, then press Record** at each
    comfortable endpoint and hold it for at least two seconds. Confirm physical
    comfort separately for every measurement. Never force your neck.
-4. Complete the optional roll and translation steps if selected. Otherwise those
+4. Choose optional roll and translation after yaw/pitch, and complete those steps
+   if selected. Otherwise those
    mapping axes keep their current curves. Each calibrated axis needs both signed
    branches; repeating the same direction is rejected.
-5. Review the measured physical ranges, noise, quality and actual spline preview.
+5. Choose a game profile, compare the three styles, then review the measured
+   physical ranges, noise, quality and actual spline preview.
    Edit each virtual target, neutral deadzone, and response Shape (1.2–3). Yaw defaults
    to **150° virtual camera movement in each direction**, not 150° physical rotation.
    The physical range columns identify which branch represents left/right or up/down.
-6. Confirm replacement and press **Apply curves and stop tracking**. Tracking stops
+6. Confirm replacement and press **Apply and continue**. Tracking stops
    through the ordinary application lifecycle before points and limits are replaced.
-   The profile is saved. Restart tracking when ready. Cancel before applying discards
+   The profile is saved. Finish closes Completion. Restart tracking when ready. Cancel before applying discards
    the draft. **Undo calibration / previous mapping** restores and saves the prior affected
    points, alternate-branch flags, limits, and calibration record after confirmation.
+
+Tracking loss automatically restarts a segment after 0.5 seconds of reliable tracking.
+Back to a recording clears its dependent measurements. Optional axes can be skipped;
+recenter returns to Welcome. A save failure restores mappings before another attempt.
+See the [integrated 2.1 guide](OPENTRACK-ENHANCED-2.1-GUIDE.md) for the complete flow,
+keyboard controls, DPI behavior and exact LMU test sequence.
 
 Enable mapping curves and centering, and disable automatic centering before starting.
 Amplification **42%** is neutral (1×). The wizard compensates the current gain once
@@ -140,3 +148,8 @@ checks with your camera and a copied working profile before adopting the curves.
 The later Smart Mapping revision replaces the neutral-gain guard with explicit gain
 compensation and adds schema 2, selected-axis persistence and profile transport. See
 [SMART-MAPPING.md](SMART-MAPPING.md) for the final expanded verification results.
+
+Final integration is recorded in [RELEASE-2.1-REPORT.md](RELEASE-2.1-REPORT.md):
+143 application tests passed, the native wizard was checked at four DPI scales,
+and the physical PS3 Eye was tested at the requested 75 FPS configuration.
+The historical results above describe the initial engine stage.
