@@ -361,6 +361,10 @@ Press &quot;clear calibration&quot; to remove any calibration data pertaining to
         <translation>无</translation>
     </message>
     <message>
+        <source>Head Movement Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Centering method</source>
         <translation>居中方式</translation>
     </message>

@@ -2,10 +2,17 @@
 
 OpenTrack's tracker, filter, protocol, response-curve and profile architecture is retained.
 The [completion report](ENHANCED-COMPLETION.md) records the executed build and tests.
-New capture, adaptive-filter and prediction behavior is disabled by default. Enable one
+New capture, adaptive-filter, prediction and head-control behavior is disabled by default. Enable one
 feature at a time when comparing it with your existing profile.
 
 ## Implemented software
+
+- **Head Movement Controls** add a master toggle, Amplification and Speed 0–100% sliders,
+  live percentages, neutral Reset, axis overrides and live diagnostics in global Options and
+  the NeuralNet Enhanced panel. 42% amplification is 1x gain; 55% Speed preserves the selected
+  response. Gain runs once after the existing curves; Speed shares the adaptive filter or uses
+  an explicit fallback without stacking external filters. [HEAD-MOVEMENT-CONTROLS.md](HEAD-MOVEMENT-CONTROLS.md)
+  documents the exact mappings, shared API, 120 ms transitions, estimates and hardware checks.
 
 - NeuralNet uses monotonic, submillisecond host timestamps. Pose and acquisition timestamp
   are published together. Invalid tracking produces NaN values and resets prediction.
@@ -41,7 +48,7 @@ feature at a time when comparing it with your existing profile.
   when exposed by the driver. Their existing native property pages provide device controls.
   Unsupported buffer-size requests are best effort; no unsupported modes are synthesized.
 - The existing Qt tracker settings contain Enhanced tabs: Performance, Adaptive Smoothness,
-  PS3 Eye Camera, Prediction and Diagnostics. Settings use additive per-profile INI keys.
+  Head Movement Controls, PS3 Eye Camera, Prediction and Diagnostics. Settings use additive per-profile INI keys.
   Save/Cancel follows the existing options bundles; old profiles retain disabled defaults.
 - Windows packaging puts ONNX Runtime in **modules/onnxruntime.dll**, includes all five
   models, Visual C++ runtime DLLs and the optional provider helper. Missing/incompatible runtime initialization now
@@ -151,7 +158,10 @@ Open **Actions → OpenTrack Windows x64 Full Build → Run workflow**. The work
 ## Source changes
 
 - `enhanced/{telemetry,latest-frame,reconnect,motion,ipc-lock,options,widgets}.hpp`
-- `enhanced/tests/{CMakeLists.txt,core.cpp,settings.cpp,integration.cpp}`
+- `enhanced/tests/{CMakeLists.txt,core.cpp,settings.cpp,integration.cpp,head-controls.cpp,pipeline-controls.cpp}`
+- Head controls additionally change `enhanced/{head-controls.hpp,head-controls-ui.hpp}`, shared
+  adaptive-filter API/parameters, pipeline diagnostics, `gui/options-dialog.{hpp,cpp}` and
+  `opentrack/main-window.cpp`; their full behavior is documented in `HEAD-MOVEMENT-CONTROLS.md`.
 - `filter-enhanced-adaptive/{CMakeLists.txt,filter.hpp,filter.cpp}`
 - `api/plugin-api.hpp`, `logic/pipeline.hpp`, `logic/pipeline.cpp`
 - `tracker-neuralnet/{ftnoir_tracker_neuralnet.h,ftnoir_tracker_neuralnet.cpp,enhanced-controls.cpp,model_adapters.h,model_adapters.cpp,env.cpp,CMakeLists.txt}`

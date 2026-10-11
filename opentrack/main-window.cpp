@@ -815,6 +815,11 @@ void main_window::show_options_dialog(bool show)
             options_widget->register_filter(&*work->libs.pFilter);
     }
 
+    options_widget->head_diagnostics = [this]() -> std::optional<enhanced::head_controls_snapshot> {
+        if (work) return work->pipeline_.head_movement_snapshot();
+        return {};
+    };
+
     if (show)
         show_window(*options_widget, true);
 }

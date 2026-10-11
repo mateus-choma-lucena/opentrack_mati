@@ -7,9 +7,12 @@ void enhanced_adaptive::filter(const double* input, double* output)
 { filter_sample(input, output, { enhanced::clock::now(), {} }); }
 
 void enhanced_adaptive::filter_sample(const double* input, double* output, const tracking_sample_info& sample)
+{ filter_sample_with_response(input, output, sample, 1.); }
+
+void enhanced_adaptive::filter_sample_with_response(const double* input, double* output, const tracking_sample_info& sample, double multiplier)
 {
     const enhanced::adaptive_parameters parameters{ *settings.adaptive_enabled, *settings.confidence_aware,
-        *settings.rotation_smoothing, *settings.translation_smoothing, *settings.responsiveness, *settings.jitter };
+        *settings.rotation_smoothing, *settings.translation_smoothing, *settings.responsiveness, *settings.jitter, multiplier };
     enhanced::pose measurement;
     std::copy_n(input, 6, measurement.begin());
     std::lock_guard lock(mutex);

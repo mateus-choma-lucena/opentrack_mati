@@ -357,6 +357,10 @@ Press &quot;clear calibration&quot; to remove any calibration data pertaining to
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Head Movement Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Centering method</source>
         <translation type="unfinished"></translation>
     </message>

@@ -277,6 +277,7 @@ void pipeline::maybe_set_center_pose(const centering_state mode, const Pose& val
         if (libs.pFilter)
             libs.pFilter->center();
         motion_predictor.reset();
+        head_controls.reset_motion();
 
         if (own_center_logic)
         {
@@ -398,13 +399,18 @@ pipeline::get_selected_axis_values(const Pose& newpose) const
     return { newpose, value, disabled };
 }
 
-Pose pipeline::maybe_apply_filter(const Pose& value) const
+Pose pipeline::maybe_apply_filter(const Pose& value, bool shared_response) const
 {
     Pose tmp(value);
 
     // nan/inf values will corrupt filter internal state
     if (libs.pFilter)
-        libs.pFilter->filter_sample(value, tmp, current_sample);
+    {
+        if (shared_response)
+            libs.pFilter->filter_sample_with_response(value, tmp, current_sample, head_controls.response_multiplier());
+        else
+            libs.pFilter->filter_sample(value, tmp, current_sample);
+    }
 
     return tmp;
 }
@@ -447,6 +453,11 @@ void pipeline::logic()
     logger.write_dt();
     logger.reset_dt();
 
+    head_controls.configure(enhanced::clock::now(),
+        { *enhanced_opts.head_enabled, *enhanced_opts.per_axis, *enhanced_opts.amplification, *enhanced_opts.speed,
+          { *enhanced_opts.amplification_x, *enhanced_opts.amplification_y, *enhanced_opts.amplification_z,
+            *enhanced_opts.amplification_yaw, *enhanced_opts.amplification_pitch, *enhanced_opts.amplification_roll } });
+
     // we must center prior to getting data from the tracker
     const bool center_ordered = b.get(f_center | f_held_center) && tracking_started;
     const bool own_center_logic = center_ordered && libs.pTracker->center();
@@ -468,6 +479,7 @@ void pipeline::logic()
         if (!std::isfinite(m_newpose(axis)))
         {
             motion_predictor.reset();
+            head_controls.reset_motion();
             if (libs.pFilter) libs.pFilter->tracking_lost();
             libs.pTracker->enhanced_feedback(false, 0, 0, 0);
             break;
@@ -522,11 +534,22 @@ void pipeline::logic()
     {
         // we must proceed with all the filtering since the filter
         // needs fresh values to prevent deconvergence
+        const bool shared_response = libs.pFilter && libs.pFilter->supports_head_response();
+        enhanced::pose corrected;
+        std::copy_n(static_cast<const double*>(value), 6, corrected.begin());
         if (center_ordered)
-            (void)maybe_apply_filter(value);
+            (void)maybe_apply_filter(value, shared_response);
         else
-            value = maybe_apply_filter(value);
+            value = maybe_apply_filter(value, shared_response);
         nan_check(value);
+        if (!center_ordered)
+        {
+            enhanced::pose selected;
+            std::copy_n(static_cast<const double*>(value), 6, selected.begin());
+            const auto response = head_controls.respond(corrected, selected, current_sample.captured, shared_response,
+                shared_response ? libs.pFilter->estimated_response_lag_ms() : std::optional<double>{});
+            std::copy(response.begin(), response.end(), static_cast<double*>(value));
+        }
         // Prediction belongs after the selected filter, before response curves and output mapping.
         enhanced::pose measured;
         std::copy_n(static_cast<const double*>(value), 6, measured.begin());
@@ -553,6 +576,15 @@ void pipeline::logic()
         // CAVEAT translation only, due to tcomp
         for (int i = 0; i < 3; i++)
             value(i) = map(value(i), m(i));
+        nan_check(value);
+    }
+
+    // Scale mapped virtual movement once, before fixed zero offsets and protocol inversion.
+    {
+        enhanced::pose mapped;
+        std::copy_n(static_cast<const double*>(value), 6, mapped.begin());
+        const auto amplified = head_controls.amplify(mapped);
+        std::copy(amplified.begin(), amplified.end(), static_cast<double*>(value));
         nan_check(value);
     }
 
@@ -592,13 +624,22 @@ ok:
             value(i) = -value(i);
 
     libs.pProtocol->pose(value, raw);
+    const auto submitted = enhanced::clock::now();
     if (current_output_is_sample && !hold_ordered && !b.get(f_zero))
-        libs.pTracker->output_finished(current_sample, enhanced::clock::now());
+        libs.pTracker->output_finished(current_sample, submitted);
+
+    enhanced::pose raw_diagnostic, processed_diagnostic;
+    std::copy_n(static_cast<const double*>(raw), 6, raw_diagnostic.begin());
+    std::copy_n(static_cast<const double*>(value), 6, processed_diagnostic.begin());
+    const auto diagnostic = head_controls.snapshot(raw_diagnostic, processed_diagnostic, current_sample.captured, submitted,
+        current_output_is_sample && !hold_ordered && !b.get(f_zero));
+    libs.pTracker->head_movement_feedback(diagnostic);
 
     {
         QMutexLocker foo(&mtx);
         m_output_pose = value;
         m_raw_6dof = raw;
+        head_diagnostic = diagnostic;
     }
 
     logger.write_pose(value); // "mapped"

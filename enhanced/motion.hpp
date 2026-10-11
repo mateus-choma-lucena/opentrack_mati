@@ -13,6 +13,7 @@ struct adaptive_parameters
     bool enabled = false, confidence_aware = false;
     double rotation_smoothing = 1., translation_smoothing = 1.;
     double responsiveness = 1., jitter = 1.;
+    double response_multiplier = 1.; // per-call override; does not change saved filter settings
 };
 
 class adaptive_filter
@@ -21,14 +22,16 @@ class adaptive_filter
     timestamp last{};
     bool initialized = false, lost = false, recovery_phase = false;
     unsigned rejected = 0;
+    std::optional<double> lag_ms;
 public:
     void reset() { *this = {}; }
     void tracking_lost() { lost = true; velocity = {}; }
+    std::optional<double> estimated_lag_ms() const { return lag_ms; }
     pose update(const pose& input, timestamp time, adaptive_parameters p, std::optional<double> confidence = {})
     {
         if (!finite(input) || (p.confidence_aware && confidence && (!std::isfinite(*confidence) || *confidence <= 0)))
         { lost = true; velocity = {}; return output; }
-        if (!p.enabled) { output = previous = input; last = time; initialized = true; lost = recovery_phase = false; return output; }
+        if (!p.enabled) { output = previous = input; last = time; initialized = true; lost = recovery_phase = false; lag_ms.reset(); return output; }
         if (!initialized) { output = previous = input; last = time; initialized = true; return output; }
         if (time <= last) return output;
         const double interval = std::chrono::duration<double>(time-last).count();
@@ -47,13 +50,16 @@ public:
         recovery_phase |= forced_recovery;
         rejected = 0;
         const double confidence_scale = p.confidence_aware && confidence ? std::clamp(*confidence, .05, 1.) : 1.;
+        double lowest_cutoff = 60.;
         for (std::size_t i=0; i<6; ++i)
         {
             const double speed = delta(input[i], previous[i], i)/dt;
             velocity[i] += alpha(8., dt)*(speed-velocity[i]);
             const double strength = std::clamp(i<3 ? p.translation_smoothing : p.rotation_smoothing, 0., 5.);
             const double base = 1.5/(.25+strength);
-            const double cutoff = std::clamp(base + std::clamp(p.responsiveness, 0., 5.)*std::abs(velocity[i])*.35, base, 60.);
+            const double multiplier = std::clamp(p.response_multiplier, .125, 5.);
+            const double cutoff = std::clamp((base + std::clamp(p.responsiveness, 0., 5.)*std::abs(velocity[i])*.35)*multiplier, base*multiplier, 60.);
+            lowest_cutoff = std::min(lowest_cutoff, cutoff*confidence_scale);
             double difference = delta(input[i], output[i], i);
             const double band = std::clamp(p.jitter, 0., 5.)*(i<3 ? .015 : .08);
             if (std::abs(speed) < (i<3 ? .5 : 2.))
@@ -68,6 +74,7 @@ public:
         for (std::size_t i=0; i<6; ++i) close &= std::abs(delta(input[i], output[i], i)) < (i<3 ? .1 : 1.);
         if (close) recovery_phase = false;
         previous = input;
+        lag_ms = 1000./(6.283185307179586*lowest_cutoff);
         return output;
     }
 };

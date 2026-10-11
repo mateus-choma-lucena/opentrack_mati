@@ -16,6 +16,7 @@
 #include "tracklogger.hpp"
 #include "enhanced/motion.hpp"
 #include "enhanced/options.hpp"
+#include "enhanced/head-controls.hpp"
 
 #include <QMutex>
 #include <QThread>
@@ -87,6 +88,8 @@ class OTR_LOGIC_EXPORT pipeline : private QThread
     main_settings s;
     enhanced_settings enhanced_opts;
     enhanced::predictor motion_predictor;
+    enhanced::head_movement_controls head_controls;
+    enhanced::head_controls_snapshot head_diagnostic;
     tracking_sample_info current_sample;
     const Mappings& m;
 
@@ -123,7 +126,7 @@ class OTR_LOGIC_EXPORT pipeline : private QThread
     Pose apply_center(const centering_state mode, Pose value) const;
     Pose apply_camera_offset(Pose value) const;
     std::tuple<Pose, Pose, vec6_bool> get_selected_axis_values(const Pose& newpose) const;
-    Pose maybe_apply_filter(const Pose& value) const;
+    Pose maybe_apply_filter(const Pose& value, bool shared_response) const;
     Pose apply_reltrans(Pose value, vec6_bool disabled, bool centerp);
     Pose apply_zero_pos(Pose value) const;
 
@@ -134,6 +137,7 @@ public:
     ~pipeline() override;
 
     void raw_and_mapped_pose(double* mapped, double* raw) const;
+    enhanced::head_controls_snapshot head_movement_snapshot() const { QMutexLocker lock(&mtx); return head_diagnostic; }
     void start() { QThread::start(QThread::HighPriority); }
 
     void toggle_zero();

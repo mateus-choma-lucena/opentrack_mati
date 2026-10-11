@@ -13,6 +13,8 @@
 #include <QTabWidget>
 #include <QProcess>
 #include <QFile>
+#include <QSlider>
+#include <QCheckBox>
 #include <iostream>
 #include <thread>
 #include <atomic>
@@ -118,11 +120,19 @@ int main(int argc, char** argv)
     dialog->register_tracker(tracker.get()); dialog->resize(780,800); dialog->show(); wait_ms(300);
     dialog->grab().save(QDir(stage).absoluteFilePath("enhanced-settings-preview.png"));
     if (auto* tabs = dialog->findChild<QTabWidget*>("enhancedTabs"))
+    {
+        const auto* amplification=dialog->findChild<QSlider*>("headAmplification");
+        const auto* speed=dialog->findChild<QSlider*>("headSpeed");
+        const auto* enabled=dialog->findChild<QCheckBox*>("headControlsEnabled");
+        if (tabs->count()!=6 || !amplification || !speed || !enabled || amplification->value()!=42 || speed->value()!=55 || enabled->isChecked())
+        { std::cerr << "Head Movement Controls UI defaults invalid"; return 1; }
         for (int index=0; index<tabs->count(); ++index)
         {
             tabs->setCurrentIndex(index); wait_ms(20);
             if (!dialog->grab().save(QDir(stage).absoluteFilePath(QString("enhanced-settings-preview-%1.png").arg(index)))) return 1;
         }
+    }
+    else { std::cerr << "Enhanced settings tabs missing"; return 1; }
     dialog->unregister_tracker(); dialog.reset(); tracker.reset();
     std::cout << "Installed NeuralNet + synthetic capture/reconnect + diagnostics + Qt UI: PASS\n";
     return 0;

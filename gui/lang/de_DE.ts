@@ -398,6 +398,10 @@ Klicke „Kalibrierung löschen“, um jegliche Kalibrierungsdaten der zugehöri
         <translation>Nichts</translation>
     </message>
     <message>
+        <source>Head Movement Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Tracker</source>
         <translation>Tracker</translation>
     </message>

@@ -20,20 +20,36 @@ int main(int argc, char** argv)
     auto& context = options::globals::detail::cur_settings();
     context.pathname = "test.ini";
     context.qsettings.emplace(path, QSettings::IniFormat);
+    context.qsettings->setValue("neuralnet-tracker/camera-name", "Existing PS3 Eye profile");
+    context.qsettings->setValue("legacy-plugin/private-setting", 1234);
     context.mtx.unlock();
     try {
         enhanced_settings settings;
-        if (*settings.adaptive_enabled || *settings.prediction_enabled) throw std::runtime_error("new behavior defaults enabled");
+        if (*settings.adaptive_enabled || *settings.prediction_enabled || *settings.head_enabled || *settings.amplification!=42 || *settings.speed!=55)
+            throw std::runtime_error("new behavior defaults not neutral/disabled");
         settings.prediction_ms = 12.5; settings.prediction_enabled = true; settings.rotation_smoothing = 2.5;
+        settings.head_enabled=true; settings.amplification=80; settings.speed=20; settings.per_axis=true;
+        settings.amplification_x=0; settings.amplification_y=10; settings.amplification_z=20;
+        settings.amplification_yaw=100; settings.amplification_pitch=90; settings.amplification_roll=80;
         settings.b->save();
         context.qsettings->sync();
         QSettings disk(path, QSettings::IniFormat);
+        if (disk.value("neuralnet-tracker/camera-name").toString()!="Existing PS3 Eye profile" || disk.value("legacy-plugin/private-setting").toInt()!=1234)
+            throw std::runtime_error("saving new settings changed existing profile keys");
         if (disk.value("enhanced-tracking/prediction-ms").toDouble() != 12.5 || !disk.value("enhanced-tracking/prediction-enabled").toBool())
             throw std::runtime_error("settings did not reach INI file");
+        if (!disk.value("enhanced-tracking/head-controls-enabled").toBool() || disk.value("enhanced-tracking/head-speed").toInt()!=20
+            || disk.value("enhanced-tracking/head-amplification-yaw").toInt()!=100)
+            throw std::runtime_error("Head Movement Controls did not persist");
         settings.prediction_ms = 1.; settings.prediction_enabled = false;
+        settings.head_enabled=false; settings.amplification=42; settings.speed=55; settings.per_axis=false; settings.amplification_yaw=42;
         settings.b->reload();
         if (*settings.prediction_ms != 12.5 || !*settings.prediction_enabled || *settings.rotation_smoothing != 2.5)
             throw std::runtime_error("cancel/reload did not restore saved values");
+        if (!*settings.head_enabled || *settings.amplification!=80 || *settings.speed!=20 || !*settings.per_axis
+            || *settings.amplification_x!=0 || *settings.amplification_y!=10 || *settings.amplification_z!=20
+            || *settings.amplification_yaw!=100 || *settings.amplification_pitch!=90 || *settings.amplification_roll!=80)
+            throw std::runtime_error("Head Movement Controls cancel/reload lost saved values");
         std::cout << "settings persistence: PASS\n"; return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

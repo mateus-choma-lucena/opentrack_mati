@@ -160,6 +160,7 @@ public:
     std::tuple<cv::Size, double, double> stats() const;
     enhanced::snapshot diagnostics() const;
     std::optional<enhanced::snapshot> performance_snapshot() const override { return diagnostics(); }
+    void head_movement_feedback(const enhanced::head_controls_snapshot& value) override { telemetry_.head_controls(value); }
     void output_finished(const tracking_sample_info& sample, enhanced::timestamp finished) override
     { telemetry_.output(sample.captured, finished); }
 

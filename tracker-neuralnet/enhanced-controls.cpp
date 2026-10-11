@@ -1,5 +1,6 @@
 #include "ftnoir_tracker_neuralnet.h"
 #include "enhanced/widgets.hpp"
+#include "enhanced/head-controls-ui.hpp"
 #include <QGroupBox>
 #include <QTabWidget>
 #include <QPushButton>
@@ -8,6 +9,7 @@
 #include <QFileDialog>
 #include <QSaveFile>
 #include <QTextStream>
+#include <QScrollArea>
 
 namespace neuralnet_tracker_ns {
 enhanced::snapshot NeuralNetTracker::diagnostics() const
@@ -28,9 +30,11 @@ void NeuralNetDialog::make_enhanced_controls()
     tabs->setObjectName(QStringLiteral("enhancedTabs"));
     outer->addWidget(tabs);
     auto page = [tabs](const QString& title) {
-        auto* widget = new QWidget(tabs);
+        auto* widget = new QWidget;
         auto* form = new QFormLayout(widget);
-        tabs->addTab(widget, title); return form;
+        auto* scroll = new QScrollArea(tabs);
+        scroll->setWidgetResizable(true); scroll->setFrameShape(QFrame::NoFrame); scroll->setWidget(widget);
+        tabs->addTab(scroll, title); return form;
     };
     auto* performance = page(tr("Performance"));
     auto* low_latency = enhanced_ui::check(performance, tr("Latest-frame capture worker (restart tracking to apply)"), settings_.low_latency);
@@ -40,6 +44,11 @@ void NeuralNetDialog::make_enhanced_controls()
     auto* retries = new QSpinBox;
     retries->setRange(0, 10); performance->addRow(tr("Maximum consecutive retries"), retries);
     tie_setting(settings_.reconnect_attempts, retries);
+
+    enhanced_ui::head_movement(page(tr("Head Movement Controls")), enhanced_settings_, [this]() -> std::optional<enhanced::head_controls_snapshot> {
+        if (tracker_) return tracker_->diagnostics().head;
+        return {};
+    });
 
     enhanced_ui::adaptive(page(tr("Adaptive Smoothness")), enhanced_settings_);
 
@@ -74,14 +83,22 @@ void NeuralNetDialog::make_enhanced_controls()
         const auto d = tracker_->diagnostics();
         const auto number = [](std::optional<double> value) { return value ? QString::number(*value, 'f', 4) : QString(); };
         QTextStream stream(&file);
-        stream << "width,height,requested_fps,capture_delivery_fps,inference_pipeline_fps,inference_ms,host_frame_age_ms,host_processing_ms,p50_ms,p95_ms,p99_ms,captured,processed,queue_replacements,stale_frames,backend_sequence_gaps,reconnections,tracking_valid,adaptive_active,prediction_ms,prediction_degrees,prediction_cm,application_ms,application_p50_ms,application_p95_ms,application_p99_ms,output_samples\n";
+        stream << "width,height,requested_fps,capture_delivery_fps,inference_pipeline_fps,inference_ms,host_frame_age_ms,host_processing_ms,p50_ms,p95_ms,p99_ms,captured,processed,queue_replacements,stale_frames,backend_sequence_gaps,reconnections,tracking_valid,adaptive_active,prediction_ms,prediction_degrees,prediction_cm,application_ms,application_p50_ms,application_p95_ms,application_p99_ms,output_samples,head_enabled,head_transitioning,amplification_percent,effective_global_gain,speed_percent,effective_responsiveness,shared_response,fallback_response,estimated_smoothing_time_constant_ms,sample_capture_monotonic_ms,output_monotonic_ms,head_output_valid";
+        for (const auto* prefix : {"effective_gain", "raw", "protocol"})
+            for (const auto* axis : {"x","y","z","yaw","pitch","roll"}) stream << ',' << prefix << '_' << axis;
+        stream << '\n';
         stream << d.width << ',' << d.height << ',' << d.requested_fps << ',' << number(d.capture_fps) << ',' << number(d.inference_fps) << ','
             << number(d.inference_ms) << ',' << number(d.frame_age_ms) << ',' << number(d.processing_ms) << ','
             << number(d.p50_ms) << ',' << number(d.p95_ms) << ',' << number(d.p99_ms) << ','
             << qulonglong(d.captured) << ',' << qulonglong(d.processed) << ',' << qulonglong(d.overwritten) << ',' << qulonglong(d.stale_frames) << ','
             << (d.backend_drops ? QString::number(qulonglong(*d.backend_drops)) : QString()) << ','
             << qulonglong(d.reconnects) << ',' << d.valid << ',' << d.adaptive_filter << ',' << d.prediction_ms << ',' << d.prediction_rotation << ',' << d.prediction_translation << ','
-            << number(d.application_ms) << ',' << number(d.application_p50_ms) << ',' << number(d.application_p95_ms) << ',' << number(d.application_p99_ms) << ',' << qulonglong(d.output_samples) << '\n';
+            << number(d.application_ms) << ',' << number(d.application_p50_ms) << ',' << number(d.application_p95_ms) << ',' << number(d.application_p99_ms) << ',' << qulonglong(d.output_samples) << ','
+            << d.head.enabled << ',' << d.head.transitioning << ',' << d.head.amplification << ',' << d.head.gain << ',' << d.head.speed << ',' << d.head.responsiveness << ','
+            << d.head.shared_response << ',' << d.head.fallback_response << ',' << number(d.head.estimated_lag_ms) << ','
+            << enhanced_ui::stamp_text(d.head.captured) << ',' << enhanced_ui::stamp_text(d.head.submitted) << ',' << d.head.valid;
+        for (const auto& values : {d.head.gains,d.head.raw,d.head.processed}) for (double value : values) stream << ',' << value;
+        stream << '\n';
         stream.flush();
         if (!file.commit()) qWarning() << "Could not save diagnostics CSV:" << file.errorString();
     });

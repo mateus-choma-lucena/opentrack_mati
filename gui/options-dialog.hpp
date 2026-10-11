@@ -5,6 +5,8 @@
 #include "gui/ui_options-dialog.h"
 #include "input/shortcuts.h"
 #include "logic/main-settings.hpp"
+#include "enhanced/options.hpp"
+#include "enhanced/telemetry.hpp"
 
 #include <functional>
 
@@ -38,11 +40,13 @@ public:
     void unregister_filter();
     void save();
     void reload();
+    std::function<std::optional<enhanced::head_controls_snapshot>()> head_diagnostics;
 private:
     void closeEvent(QCloseEvent*) override;
     static QString kopts_to_string(const key_opts& opts);
 
     main_settings main;
+    enhanced_settings enhanced_opts;
     std::function<void(bool)> pause_keybindings;
     Ui::options_dialog ui;
 

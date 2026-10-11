@@ -146,6 +146,11 @@ struct OTR_API_EXPORT IFilter : module_status_mixin
     virtual void filter_sample(const double* input, double* output, const tracking_sample_info&)
     { filter(input, output); }
     virtual bool enhanced_active() const { return false; }
+    // Per-sample Speed override. Only supporting filters use it; saved settings stay untouched.
+    virtual bool supports_head_response() const { return false; }
+    virtual void filter_sample_with_response(const double* input, double* output, const tracking_sample_info& sample, double)
+    { filter_sample(input, output, sample); }
+    virtual std::optional<double> estimated_response_lag_ms() const { return {}; }
     virtual void tracking_lost() {}
     // optionally reset the filter when centering
     virtual void center() {}
@@ -217,6 +222,7 @@ struct OTR_API_EXPORT ITracker
     virtual void enhanced_feedback(bool, double, double, double) {}
     virtual std::optional<enhanced::snapshot> performance_snapshot() const { return {}; }
     virtual void output_finished(const tracking_sample_info&, enhanced::timestamp) {}
+    virtual void head_movement_feedback(const enhanced::head_controls_snapshot&) {}
     // tracker notified of centering
     // returning true makes identity the center pose
     virtual bool center();

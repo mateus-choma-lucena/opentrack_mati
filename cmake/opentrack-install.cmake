@@ -40,6 +40,7 @@ endif()
 otr_install_misc("${opentrack-doc}" FILES README.md)
 otr_install_misc("${opentrack-doc}" FILES ENHANCED.md)
 otr_install_misc("${opentrack-doc}" FILES ENHANCED-COMPLETION.md)
+otr_install_misc("${opentrack-doc}" FILES HEAD-MOVEMENT-CONTROLS.md)
 
 otr_install_misc("${opentrack-doc}" FILES "README.md")
 otr_install_misc("${opentrack-doc}" FILES ".github/CONTRIBUTING.md")

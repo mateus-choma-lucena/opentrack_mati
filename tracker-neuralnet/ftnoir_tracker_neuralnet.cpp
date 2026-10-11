@@ -7,6 +7,7 @@
 
 #include "ftnoir_tracker_neuralnet.h"
 #include "deadzone_filter.h"
+#include "enhanced/head-controls-ui.hpp"
 #include "opencv_contrib.h"
 
 #include "compat/check-visible.hpp"
@@ -1042,7 +1043,8 @@ void NeuralNetDialog::status_poll()
             .arg(d.internal_filter ? tr("on") : tr("off")).arg(d.adaptive_filter ? tr("on") : tr("off"))
             .arg(d.prediction_ms, 0, 'f', 1).arg(d.prediction_rotation, 0, 'f', 2).arg(d.prediction_translation, 0, 'f', 3)
             + tr("\nHost capture to protocol submission: %1 ms; P50 / P95 / P99: %2 / %3 / %4 ms")
-                .arg(number(d.application_ms), number(d.application_p50_ms), number(d.application_p95_ms), number(d.application_p99_ms)));
+                .arg(number(d.application_ms), number(d.application_p50_ms), number(d.application_p95_ms), number(d.application_p99_ms))
+            + '\n' + enhanced_ui::head_diagnostics_text(d.head));
     }
     else if (!tracker_) diagnostics_label_->setText(tr("Tracker offline; measurements unavailable."));
 }

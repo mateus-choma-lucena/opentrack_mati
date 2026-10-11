@@ -359,6 +359,10 @@ Press &quot;clear calibration&quot; to remove any calibration data pertaining to
         <translation>Не назначена</translation>
     </message>
     <message>
+        <source>Head Movement Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Centering method</source>
         <translation>Метод центровки</translation>
     </message>

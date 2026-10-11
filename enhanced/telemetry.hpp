@@ -46,6 +46,16 @@ public:
     }
 };
 
+struct head_controls_snapshot
+{
+    bool enabled = false, transitioning = false, shared_response = false, fallback_response = false, valid = false;
+    int amplification = 42, speed = 55;
+    double gain = 1., responsiveness = 1.;
+    std::array<double, 6> gains{1,1,1,1,1,1}, raw{}, processed{};
+    std::optional<double> estimated_lag_ms;
+    timestamp captured{}, submitted{}; // monotonic host timestamps, not wall-clock time
+};
+
 struct snapshot
 {
     int width = 0, height = 0, requested_fps = 0;
@@ -57,6 +67,7 @@ struct snapshot
     std::optional<std::uint64_t> backend_drops;
     bool valid = false, connected = false, internal_filter = false, adaptive_filter = false;
     double prediction_ms = 0, prediction_rotation = 0, prediction_translation = 0;
+    head_controls_snapshot head;
 };
 
 class telemetry
@@ -115,6 +126,8 @@ public:
         state.prediction_ms = horizon; state.prediction_rotation = rotation; state.prediction_translation = translation;
         state.adaptive_filter = filter;
     }
+    void head_controls(const head_controls_snapshot& value)
+    { std::lock_guard lock(mutex); state.head = value; }
     snapshot read(timestamp now = clock::now()) const
     {
         std::lock_guard lock(mutex);
