@@ -1,0 +1,77 @@
+include(opentrack-opencv)
+set(host-spec "${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR} ${CMAKE_SIZEOF_VOID_P}")
+if(host-spec MATCHES "^Linux i[3-6]86 4$")
+    return()
+endif()
+#if(NOT DEFINED opentrack-use-onnxruntime-avx-dispatch)
+#    set(opentrack-use-onnxruntime-avx-dispatch 0)
+#endif()
+
+option(OPENTRACK_REQUIRE_NEURALNET "Fail configuration when NeuralNet dependencies are unavailable" OFF)
+if(OPENTRACK_REQUIRE_NEURALNET)
+    find_package(OpenCV REQUIRED)
+    find_package(OpenMP REQUIRED)
+    find_package(ONNXRuntime REQUIRED)
+else()
+    find_package(OpenCV QUIET)
+    find_package(OpenMP QUIET)
+    find_package(ONNXRuntime QUIET)
+endif()
+
+if(OpenCV_FOUND AND ONNXRuntime_FOUND AND OpenMP_FOUND)
+    if(MSVC)
+        add_compile_options(-EHsc)
+        add_definitions(-D_HAS_EXCEPTIONS=1)
+    endif()
+
+    otr_module(tracker-neuralnet)
+
+    target_link_libraries(${self} PRIVATE onnxruntime::onnxruntime)
+    otr_install_pdb_for_imported_target(onnxruntime::onnxruntime)
+    if(WIN32)
+        target_compile_definitions(${self} PRIVATE ORT_API_MANUAL_INIT)
+    endif()
+
+    target_link_libraries(${self} PRIVATE
+        opentrack-cv
+        ${OTR_OPENCV_CALIB_MODULES}
+        opencv_imgproc
+        opencv_imgcodecs
+        opencv_core
+        OpenMP::OpenMP_CXX
+        )
+
+    # OpenMP::OpenMP_CXX doesn't set up the -fopenmp linking option, so set it up ourselves.
+    if(NOT MSVC)
+        # OpenMP_CXX_FLAGS is a space-separated string (e.g. "-Xclang -fopenmp"
+        # with Homebrew libomp on macOS). target_link_options expects a list,
+        # so split it first, otherwise the whole string lands as a single
+        # argument and clang rejects it.
+        separate_arguments(_otr_openmp_link_flags UNIX_COMMAND "${OpenMP_CXX_FLAGS}")
+        target_link_options(${self} PUBLIC ${_otr_openmp_link_flags})
+    endif()
+
+    install(
+        FILES "models/head-localizer.onnx"
+              "models/head-pose-0.2-big.onnx"
+              "models/head-pose-0.2-small.onnx"
+              "models/head-pose-0.5-big.onnx"
+              "models/head-pose-0.5-small.onnx"
+        DESTINATION "${opentrack-libexec}/models"
+        PERMISSIONS ${opentrack-perms-file}
+        )
+
+    if(WIN32)
+        if(NOT opentrack-use-onnxruntime-avx-dispatch)
+            # env.cpp loads from OPENTRACK_LIBRARY_PATH (modules on Windows).
+            otr_install_lib("${ONNXRuntime_RUNTIME}" "${opentrack-libexec}")
+            get_filename_component(_ort_directory "${ONNXRuntime_RUNTIME}" DIRECTORY)
+            if(EXISTS "${_ort_directory}/onnxruntime_providers_shared.dll")
+                otr_install_lib("${_ort_directory}/onnxruntime_providers_shared.dll" "${opentrack-libexec}")
+            endif()
+        endif()
+    endif()
+    if(MSVC)
+        otr_install_lib("redist/vcomp140.dll" "${opentrack-bin}")
+    endif()
+endif()

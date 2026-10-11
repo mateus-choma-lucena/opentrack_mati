@@ -1,0 +1,52 @@
+add_executable(enhanced-core-tests core.cpp)
+target_compile_features(enhanced-core-tests PRIVATE cxx_std_20)
+target_include_directories(enhanced-core-tests PRIVATE "${CMAKE_SOURCE_DIR}")
+if(MSVC)
+    target_compile_options(enhanced-core-tests PRIVATE /W4 /EHsc)
+    target_compile_definitions(enhanced-core-tests PRIVATE _HAS_EXCEPTIONS=1)
+else()
+    target_compile_options(enhanced-core-tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+if(TARGET opentrack-tracker-neuralnet AND TARGET opentrack-video)
+    add_executable(enhanced-integration-tests integration.cpp)
+    target_compile_features(enhanced-integration-tests PRIVATE cxx_std_20)
+    target_include_directories(enhanced-integration-tests PRIVATE "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}")
+    target_link_libraries(enhanced-integration-tests PRIVATE opentrack-api opentrack-video opentrack-options opentrack-compat Qt6::Widgets)
+    add_dependencies(enhanced-integration-tests opentrack-tracker-neuralnet opentrack-filter-enhanced-adaptive)
+    if(MSVC)
+        target_compile_definitions(enhanced-integration-tests PRIVATE _HAS_EXCEPTIONS=1)
+    endif()
+    add_custom_command(TARGET enhanced-integration-tests POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_INSTALL_PREFIX}"
+        COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:enhanced-integration-tests>" "${CMAKE_INSTALL_PREFIX}"
+    )
+    foreach(mode serial latest missing-runtime)
+        add_test(NAME enhanced-plugin-${mode} COMMAND "${CMAKE_INSTALL_PREFIX}/enhanced-integration-tests${CMAKE_EXECUTABLE_SUFFIX}" "${CMAKE_INSTALL_PREFIX}" ${mode})
+        set_tests_properties(enhanced-plugin-${mode} PROPERTIES TIMEOUT 30 ENVIRONMENT
+            "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>"
+        )
+    endforeach()
+    if(WIN32)
+        set_tests_properties(enhanced-plugin-serial enhanced-plugin-latest enhanced-plugin-missing-runtime PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;PATH=path_list_prepend:${CMAKE_INSTALL_PREFIX};PATH=path_list_prepend:${CMAKE_INSTALL_PREFIX}/modules"
+        )
+    endif()
+endif()
+foreach(case timestamps percentiles queue queue_threads ipc stale jitter fast wrap recovery spike intervals recenter confidence prediction overshoot direction loss reconnect)
+    add_test(NAME enhanced-${case} COMMAND enhanced-core-tests ${case})
+endforeach()
+if(TARGET opentrack-options)
+    add_executable(enhanced-settings-tests settings.cpp)
+    target_compile_features(enhanced-settings-tests PRIVATE cxx_std_20)
+    target_include_directories(enhanced-settings-tests PRIVATE "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}")
+    target_link_libraries(enhanced-settings-tests PRIVATE opentrack-options opentrack-compat Qt6::Core Qt6::Widgets)
+    if(MSVC)
+        target_compile_definitions(enhanced-settings-tests PRIVATE _HAS_EXCEPTIONS=1)
+    endif()
+    add_test(NAME enhanced-settings-persistence COMMAND enhanced-settings-tests)
+    if(WIN32)
+        set_tests_properties(enhanced-settings-persistence PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;PATH=path_list_prepend:${CMAKE_INSTALL_PREFIX};PATH=path_list_prepend:$<TARGET_FILE_DIR:opentrack-options>;PATH=path_list_prepend:$<TARGET_FILE_DIR:opentrack-compat>"
+        )
+    endif()
+endif()
