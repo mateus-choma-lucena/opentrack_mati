@@ -9,6 +9,9 @@
 #include "mapping-dialog.hpp"
 #include "logic/main-settings.hpp"
 #include "spline/spline-widget.hpp"
+#include "enhanced/head-controls-ui.hpp"
+#include <QGroupBox>
+#include <QVBoxLayout>
 
 #include <QtEvents>
 
@@ -17,6 +20,8 @@ using namespace options;
 mapping_dialog::mapping_dialog(Mappings& m) : m(m), widgets{}
 {
     ui.setupUi(this);
+    ui.verticalLayout->setContentsMargins(6,6,6,6);
+    ui.verticalLayout->setSpacing(4);
 
     QWidget* pages[] = {
         ui.tabWidgetPage1,
@@ -37,10 +42,35 @@ mapping_dialog::mapping_dialog(Mappings& m) : m(m), widgets{}
             .arg(bg.red()).arg(bg.green()).arg(bg.blue());
 
         for (QWidget* w : pages)
+        {
             w->setStyleSheet(tmp);
+            w->layout()->setContentsMargins(6,6,6,6);
+            w->layout()->setSpacing(4);
+        }
     }
 
     load();
+
+    auto* controls=new QGroupBox(tr("Head Movement Controls"),this);
+    controls->setObjectName("mappingHeadControls");
+    auto* form=new QFormLayout(controls);
+    form->setContentsMargins(6,6,6,6); form->setSpacing(3);
+    enhanced_ui::head_movement(form,enhanced_opts,[this] { return head_diagnostics ? head_diagnostics() : std::optional<enhanced::head_controls_snapshot>{}; },
+        [this] { const int tab=ui.tabWidget->currentIndex(); return tab<3?tab+3:tab-3; },
+        [this](int axis) { return this->m(axis).opts.max_clamp_y(); });
+    ui.verticalLayout->insertWidget(0,controls);
+    auto* legend=new QLabel(tr("Dashed: original curve. Orange: adjusted target, capped at Max output. Points edit the original."));
+    legend->setToolTip(tr("Speed controls how quickly output reaches the adjusted target."));
+    legend->setWordWrap(true); ui.verticalLayout->insertWidget(1,legend);
+    const auto changed=[this](auto) { refresh_mapping_controls(); };
+    options::tie_setting(enhanced_opts.head_enabled,this,changed);
+    options::tie_setting(enhanced_opts.amplification,this,changed);
+    options::tie_setting(enhanced_opts.per_axis,this,changed);
+    for (auto* value : { &enhanced_opts.amplification_x,&enhanced_opts.amplification_y,&enhanced_opts.amplification_z,
+                        &enhanced_opts.amplification_yaw,&enhanced_opts.amplification_pitch,&enhanced_opts.amplification_roll })
+        options::tie_setting(*value,this,changed);
+    connect(&preview_timer,&QTimer::timeout,this,&mapping_dialog::refresh_tab); preview_timer.start(100);
+    refresh_mapping_controls();
 
     tie_setting(s.a_yaw.altp, ui.rx_altp);
     tie_setting(s.a_pitch.altp, ui.ry_altp);
@@ -66,6 +96,15 @@ mapping_dialog::mapping_dialog(Mappings& m) : m(m), widgets{}
     connect(ui.buttonBox, &QDialogButtonBox::rejected, this, &mapping_dialog::reject);
     connect(this, &mapping_dialog::accepted, this, &mapping_dialog::doAccept);
     connect(this, &mapping_dialog::rejected, this, &mapping_dialog::doReject);
+}
+
+void mapping_dialog::refresh_mapping_controls()
+{
+    const std::array<int,6> percentages{*enhanced_opts.amplification_yaw,*enhanced_opts.amplification_pitch,*enhanced_opts.amplification_roll,
+        *enhanced_opts.amplification_x,*enhanced_opts.amplification_y,*enhanced_opts.amplification_z};
+    for (int tab=0;tab<6;++tab) for (auto* widget:widgets[tab])
+        if (widget) widget->set_mapping_overlay(*enhanced_opts.head_enabled,
+            enhanced::amplification_gain(*enhanced_opts.per_axis ? percentages[tab] : *enhanced_opts.amplification));
 }
 
 void mapping_dialog::load()
@@ -116,6 +155,9 @@ void mapping_dialog::load()
         Map& axis = m(qfcs[i].axis);
         spline& conf = altp ? axis.spline_alt : axis.spline_main;
         spline_widget& qfc = *qfcs[i].qfc;
+        // Smaller minima here keep other spline users' sizing unchanged. Qt
+        // scales these logical pixel dimensions with the desktop's DPI setting.
+        qfc.setMinimumSize(560,140);
 
         if (altp)
         {
@@ -197,6 +239,7 @@ void mapping_dialog::refresh_tab()
 
 void mapping_dialog::save_dialog()
 {
+    enhanced_opts.b->save();
     s.b_map->save();
 
     for (int i = 0; i < 6; i++)
@@ -212,6 +255,7 @@ void mapping_dialog::save_dialog()
 
 void mapping_dialog::invalidate_dialog()
 {
+    enhanced_opts.b->reload();
     s.b_map->reload();
 
     m.forall([](Map& s)

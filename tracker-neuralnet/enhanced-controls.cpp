@@ -45,11 +45,6 @@ void NeuralNetDialog::make_enhanced_controls()
     retries->setRange(0, 10); performance->addRow(tr("Maximum consecutive retries"), retries);
     tie_setting(settings_.reconnect_attempts, retries);
 
-    enhanced_ui::head_movement(page(tr("Head Movement Controls")), enhanced_settings_, [this]() -> std::optional<enhanced::head_controls_snapshot> {
-        if (tracker_) return tracker_->diagnostics().head;
-        return {};
-    });
-
     enhanced_ui::adaptive(page(tr("Adaptive Smoothness")), enhanced_settings_);
 
     auto* camera = page(tr("PS3 Eye Camera"));
@@ -84,7 +79,8 @@ void NeuralNetDialog::make_enhanced_controls()
         const auto number = [](std::optional<double> value) { return value ? QString::number(*value, 'f', 4) : QString(); };
         QTextStream stream(&file);
         stream << "width,height,requested_fps,capture_delivery_fps,inference_pipeline_fps,inference_ms,host_frame_age_ms,host_processing_ms,p50_ms,p95_ms,p99_ms,captured,processed,queue_replacements,stale_frames,backend_sequence_gaps,reconnections,tracking_valid,adaptive_active,prediction_ms,prediction_degrees,prediction_cm,application_ms,application_p50_ms,application_p95_ms,application_p99_ms,output_samples,head_enabled,head_transitioning,amplification_percent,effective_global_gain,speed_percent,effective_responsiveness,shared_response,fallback_response,estimated_smoothing_time_constant_ms,sample_capture_monotonic_ms,output_monotonic_ms,head_output_valid";
-        for (const auto* prefix : {"effective_gain", "raw", "protocol"})
+        stream << ",head_per_axis";
+        for (const auto* prefix : {"effective_gain", "raw", "protocol", "mapped_target", "response_cutoff_hz", "movement_limit"})
             for (const auto* axis : {"x","y","z","yaw","pitch","roll"}) stream << ',' << prefix << '_' << axis;
         stream << '\n';
         stream << d.width << ',' << d.height << ',' << d.requested_fps << ',' << number(d.capture_fps) << ',' << number(d.inference_fps) << ','
@@ -97,7 +93,8 @@ void NeuralNetDialog::make_enhanced_controls()
             << d.head.enabled << ',' << d.head.transitioning << ',' << d.head.amplification << ',' << d.head.gain << ',' << d.head.speed << ',' << d.head.responsiveness << ','
             << d.head.shared_response << ',' << d.head.fallback_response << ',' << number(d.head.estimated_lag_ms) << ','
             << enhanced_ui::stamp_text(d.head.captured) << ',' << enhanced_ui::stamp_text(d.head.submitted) << ',' << d.head.valid;
-        for (const auto& values : {d.head.gains,d.head.raw,d.head.processed}) for (double value : values) stream << ',' << value;
+        stream << ',' << d.head.per_axis;
+        for (const auto& values : {d.head.gains,d.head.raw,d.head.processed,d.head.mapped_target,d.head.response_cutoffs,d.head.limits}) for (double value : values) stream << ',' << value;
         stream << '\n';
         stream.flush();
         if (!file.commit()) qWarning() << "Could not save diagnostics CSV:" << file.errorString();

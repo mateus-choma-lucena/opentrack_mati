@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="de_DE">
+<context>
+    <name>spline_detail::spline_widget</name>
+    <message>
+        <source>Input %1; original curve %2; adjusted target %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

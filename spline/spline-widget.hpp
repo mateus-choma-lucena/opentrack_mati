@@ -40,6 +40,9 @@ public:
     ~spline_widget() override;
 
     void set_config(base_spline* spl);
+    void set_mapping_overlay(bool enabled,double gain);
+    double adjusted_output_for_input(double input) const;
+    bool mapping_overlay_enabled() const { return overlay_enabled; }
 
     QColor colorBezier() const;
     void setColorBezier(QColor const& color);
@@ -104,6 +107,8 @@ private:
     double x_step_ = 10, y_step_ = 10;
     int moving_control_point_idx = -1;
     bool draw_function = true, preview_only = false;
+    bool overlay_enabled=false;
+    double overlay_gain=1.;
 
     // point's circle radius on the widget
     static constexpr int point_size_in_pixels_ = 5;

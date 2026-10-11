@@ -272,10 +272,6 @@ Host capture to protocol submission: %1 ms; P50 / P95 / P99: %2 / %3 / %4 ms</so
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Head Movement Controls</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Adaptive Smoothness</source>
         <translation type="unfinished"></translation>
     </message>

@@ -8,11 +8,13 @@ feature at a time when comparing it with your existing profile.
 ## Implemented software
 
 - **Head Movement Controls** add a master toggle, Amplification and Speed 0–100% sliders,
-  live percentages, neutral Reset, axis overrides and live diagnostics in global Options and
-  the NeuralNet Enhanced panel. 42% amplification is 1x gain; 55% Speed preserves the selected
-  response. Gain runs once after the existing curves; Speed shares the adaptive filter or uses
-  an explicit fallback without stacking external filters. [HEAD-MOVEMENT-CONTROLS.md](HEAD-MOVEMENT-CONTROLS.md)
-  documents the exact mappings, shared API, 120 ms transitions, estimates and hardware checks.
+  live percentages, neutral Reset, axis overrides and response readouts in **Mapping**.
+  Original/adjusted curve overlays preserve editable points and display output saturation.
+  42% amplification is 1x gain; 55% Speed preserves the selected response. Gain runs once
+  after mapping; timestamp-aware Speed converges to the mapped target using the original
+  filter as a parallel reference. Adaptive temporal smoothing is not stacked with it.
+  [HEAD-MOVEMENT-CONTROLS.md](HEAD-MOVEMENT-CONTROLS.md) documents formulas, the guarded
+  target interface, 120 ms transitions, response estimates and hardware checks.
 
 - NeuralNet uses monotonic, submillisecond host timestamps. Pose and acquisition timestamp
   are published together. Invalid tracking produces NaN values and resets prediction.
@@ -48,7 +50,8 @@ feature at a time when comparing it with your existing profile.
   when exposed by the driver. Their existing native property pages provide device controls.
   Unsupported buffer-size requests are best effort; no unsupported modes are synthesized.
 - The existing Qt tracker settings contain Enhanced tabs: Performance, Adaptive Smoothness,
-  Head Movement Controls, PS3 Eye Camera, Prediction and Diagnostics. Settings use additive per-profile INI keys.
+  PS3 Eye Camera, Prediction and Diagnostics. Mapping owns Head Movement Controls.
+  Settings use additive per-profile INI keys.
   Save/Cancel follows the existing options bundles; old profiles retain disabled defaults.
 - Windows packaging puts ONNX Runtime in **modules/onnxruntime.dll**, includes all five
   models, Visual C++ runtime DLLs and the optional provider helper. Missing/incompatible runtime initialization now
@@ -77,8 +80,9 @@ feature at a time when comparing it with your existing profile.
   fields/methods. Deploy this build's modules and subprocess together; do not mix old binaries.
   Existing INI profile keys and module selection names remain compatible.
 - The source workspace initially had no `.git` metadata. No commit or remote CI run is
-  claimed. The original Windows workflow is extended, with its existing dependency/module
-  setup retained. Optional SDK modules still depend on their SDK availability.
+  claimed. Earlier Enhanced work extended the original Windows workflow while retaining
+  its dependency/module setup; this Mapping correction leaves that working workflow intact.
+  Optional SDK modules still depend on their SDK availability.
 
 ## Local Windows build
 
@@ -91,7 +95,7 @@ From the repository root, after placing SDKs at the paths shown:
 ```bat
 tools\dev-command.bat cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=D:/Projects/OpenTrack-Enhanced/stage -DQt6_DIR=D:/Projects/OpenTrack-Enhanced/.deps/qt/6.10.3/msvc2022_64/lib/cmake/Qt6 -DOpenCV_DIR=D:/Projects/OpenTrack-Enhanced/.deps/opencv/opencv/build/x64/vc16/lib -DONNXRuntime_DIR=D:/Projects/OpenTrack-Enhanced/.deps/onnxruntime -DSDK_LIBUSB=D:/Projects/OpenTrack-Enhanced/.deps/opentrack-depends/libusb-msvc-2026-md -DOPENTRACK_REQUIRE_NEURALNET=ON -DBUILD_TESTING=ON
 tools\dev-command.bat cmake --build build --target install --parallel 8
-tools\dev-command.bat ctest --test-dir build -C Release --output-on-failure --output-junit build/enhanced-tests.xml
+tools\dev-command.bat ctest --test-dir build -C Release --output-on-failure --output-junit enhanced-tests.xml
 powershell -NoProfile -File tools\verify-package.ps1 -Stage stage
 ```
 
@@ -109,6 +113,9 @@ invalid-pose delivery and shutdown. The test also renders the Qt settings dialog
 claim human-face accuracy or hardware validation. Run install before the integration tests.
 An isolated child-process test verifies that a missing runtime returns an initialization
 error and destroys the tracker cleanly without accessing an uninitialized ONNX API.
+Mapping tests run the real pipeline with adaptive and legacy filters, render the original
+six-axis editor and advanced controls, and exercise save/cancel. A separate isolated test
+reads the unchanged production FreeTrack packet writer's mapped output.
 
 ## Exact GitHub Actions sequence
 
@@ -158,10 +165,11 @@ Open **Actions → OpenTrack Windows x64 Full Build → Run workflow**. The work
 ## Source changes
 
 - `enhanced/{telemetry,latest-frame,reconnect,motion,ipc-lock,options,widgets}.hpp`
-- `enhanced/tests/{CMakeLists.txt,core.cpp,settings.cpp,integration.cpp,head-controls.cpp,pipeline-controls.cpp}`
+- `enhanced/tests/{CMakeLists.txt,core.cpp,settings.cpp,integration.cpp,head-controls.cpp,pipeline-controls.cpp,protocol-packet.cpp,isolated-freetrack.hpp}`
 - Head controls additionally change `enhanced/{head-controls.hpp,head-controls-ui.hpp}`, shared
-  adaptive-filter API/parameters, pipeline diagnostics, `gui/options-dialog.{hpp,cpp}` and
-  `opentrack/main-window.cpp`; their full behavior is documented in `HEAD-MOVEMENT-CONTROLS.md`.
+  guarded-target API, pipeline diagnostics, `gui/mapping-dialog.{hpp,cpp}`,
+  `spline/spline-widget.{hpp,cpp}`, `gui/options-dialog.{hpp,cpp}` and
+  `opentrack/main-window.cpp`; their behavior is documented in `HEAD-MOVEMENT-CONTROLS.md`.
 - `filter-enhanced-adaptive/{CMakeLists.txt,filter.hpp,filter.cpp}`
 - `api/plugin-api.hpp`, `logic/pipeline.hpp`, `logic/pipeline.cpp`
 - `tracker-neuralnet/{ftnoir_tracker_neuralnet.h,ftnoir_tracker_neuralnet.cpp,enhanced-controls.cpp,model_adapters.h,model_adapters.cpp,env.cpp,CMakeLists.txt}`
@@ -169,7 +177,8 @@ Open **Actions → OpenTrack Windows x64 Full Build → Run workflow**. The work
 - `video-opencv/{impl.hpp,impl-camera.cpp,capabilities.cpp}`
 - `video-ps3eye/{module.hpp,module.cpp,wrapper.cxx,shm-layout.hpp,CMakeLists.txt}`
 - `CMakeLists.txt`, `cmake/{FindONNXRuntime.cmake,opentrack-install.cmake,opentrack-version.cmake}`
-- `.github/workflows/{cmake.yml,build-windows.bat}`, `tools/{dev-command.bat,verify-package.ps1}`
+- Earlier Enhanced implementation: `.github/workflows/{cmake.yml,build-windows.bat}`,
+  `tools/{dev-command.bat,verify-package.ps1}`; unchanged by the Mapping correction.
 - `opentrack/main-window.cpp`, `.gitignore`, `README.md`, `ENHANCED.md`
 - Restored the missing `video-ps3eye/ps3eye-driver` submodule checkout without changing its source.
 

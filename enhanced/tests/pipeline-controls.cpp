@@ -1,5 +1,5 @@
 #include "logic/pipeline.hpp"
-#include "gui/options-dialog.hpp"
+#include "gui/mapping-dialog.hpp"
 #include "enhanced/head-controls-ui.hpp"
 #include <QApplication>
 #include <QTemporaryDir>
@@ -20,6 +20,7 @@ struct source final : ITracker {
     pose value{2,3,4,10,8,5};
     timestamp captured=clock::now();
     double horizon=0;
+    std::function<void()> after_filter;
     module_status start_tracker(QFrame*) override { return status_ok(); }
     void data(double* out) override { tracking_sample_info sample; data_with_info(out,sample); }
     void data_with_info(double* out,tracking_sample_info& sample) override {
@@ -28,7 +29,12 @@ struct source final : ITracker {
         std::copy(value.begin(),value.end(),out); sample={captured,{}};
     }
     void set(pose p) { std::lock_guard lock(mutex); value=p; }
-    void enhanced_feedback(bool,double applied,double,double) override { std::lock_guard lock(mutex); horizon=applied; }
+    void enhanced_feedback(bool,double applied,double,double) override {
+        std::function<void()> action;
+        { std::lock_guard lock(mutex); horizon=applied; action=std::exchange(after_filter,{}); }
+        if (action) action();
+    }
+    void after_filter_once(std::function<void()> action) { std::lock_guard lock(mutex); after_filter=std::move(action); }
 };
 struct sink final : IProtocol {
     std::mutex mutex;
@@ -80,7 +86,7 @@ int main(int argc,char** argv)
             require(filter_library.load(),"installed adaptive plugin did not load");
             const auto construct=reinterpret_cast<IFilter*(*)()>(filter_library.resolve("GetConstructor"));
             require(construct!=nullptr,"adaptive constructor missing"); libraries.pFilter.reset(construct());
-            require(libraries.pFilter->initialize().is_ok()&&libraries.pFilter->supports_head_response(),"adaptive shared interface unavailable");
+            require(libraries.pFilter->initialize().is_ok()&&libraries.pFilter->guarded_mapping_target(),"adaptive mapping interface unavailable");
         } else libraries.pFilter=legacy;
         TrackLogger logger;
         {
@@ -102,42 +108,68 @@ int main(int argc,char** argv)
             require(protocol->read()==baseline,"disable did not restore original pipeline");
             settings.per_axis=false; settings.amplification=42; settings.speed=0; settings.head_enabled=true; wait_ms(150);
             const auto response=pipeline_.head_movement_snapshot();
-            require(response.responsiveness==.125&&(adaptive?response.shared_response:response.fallback_response)&&response.estimated_lag_ms,"effective responsiveness diagnostics missing");
+            require(response.responsiveness==.125&&response.fallback_response&&response.estimated_lag_ms,"effective mapped responsiveness diagnostics missing");
             require(*settings.responsiveness==1.&&*settings.rotation_smoothing==1.,"Speed modified persisted adaptive settings");
             if (!adaptive) require(legacy->calls>100,"fallback stopped keeping original filter warm");
             tracker->set({2,3,4,20,8,5}); wait_ms(35);
             require(protocol->read()[3]<mappings(3).spline_main.get_value_no_save(20)+3-.1,"slow response did not smooth real pipeline output");
-            wait_ms(300); pipeline_.set_center(true); wait_ms(60);
+            wait_ms(300);
+            // Issue the request after this tick's centering stage. It must survive
+            // until the next tick rather than being cleared unconditionally.
+            tracker->after_filter_once([&pipeline_] { pipeline_.set_center(true); }); wait_ms(60);
             require(std::abs(protocol->read()[3]-3)<.05&&std::abs(protocol->read()[0])<.05,"recenter retained old response state");
             settings.prediction_enabled=true; settings.prediction_ms=8.; settings.speed=100;
             for (int i=1;i<=20;++i) { tracker->set({2,3,4,20+i*.5,8,5}); wait_ms(10); }
             { std::lock_guard lock(tracker->mutex); require(tracker->horizon==8.,"Speed changed prediction horizon"); }
             pipeline_.set_zero(true); wait_ms(20); require(protocol->read()[3]==3.,"controls amplified fixed zero output"); pipeline_.set_zero(false);
-            std::unique_ptr<ITrackerDialog> tracker_dialog; std::unique_ptr<IProtocolDialog> protocol_dialog; std::unique_ptr<IFilterDialog> filter_dialog;
-            options_dialog dialog(tracker_dialog,protocol_dialog,filter_dialog,[](bool){});
+            const auto original_points=mappings(3).spline_main.get_points();
+            mapping_dialog dialog(mappings);
             dialog.head_diagnostics=[&pipeline_] { return std::optional{pipeline_.head_movement_snapshot()}; };
-            dialog.resize(900,700); dialog.show();
-            auto* tabs=dialog.findChild<QTabWidget*>("tabWidget"); auto* page=dialog.findChild<QScrollArea*>("headMovementControlsPage");
-            require(tabs&&page,"global controls page missing"); tabs->setCurrentWidget(page); wait_ms(40);
-            const auto snapshot_name=adaptive ? "head-controls-global-adaptive.png" : "head-controls-global-fallback.png";
-            require(dialog.grab().save(QDir(stage).absoluteFilePath(snapshot_name)),"global controls screenshot failed");
-            auto* per_axis=dialog.findChild<QCheckBox*>("headPerAxis"); auto* live=dialog.findChild<QGroupBox*>("headLiveDiagnostics");
-            require(per_axis&&live,"advanced/diagnostic UI missing");
-            per_axis->setChecked(true); wait_ms(20);
+            dialog.show();
+            auto* tabs=dialog.findChild<QTabWidget*>("tabWidget"); auto* curve=dialog.findChild<spline_widget*>("rxconfig");
+            require(tabs&&tabs->count()==6&&curve,"existing Mapping editor damaged"); tabs->setCurrentIndex(0); wait_ms(40);
+            auto* gain=dialog.findChild<QSlider*>("headAmplification"); auto* speed=dialog.findChild<QSlider*>("headSpeed");
+            auto* enabled=dialog.findChild<QCheckBox*>("headControlsEnabled");
+            require(gain&&speed&&enabled,"mapping controls missing");
+            speed->setValue(55); gain->setValue(100); wait_ms(230);
+            require(std::abs(curve->adjusted_output_for_input(10)-mapped*4)<.1,"curve overlay disagrees with mapped output gain");
+            require(curve->adjusted_output_for_input(30)==180,"overlay does not saturate at max output");
+            require(mappings(3).spline_main.get_points()==original_points,"amplification changed curve control points");
+            const auto snapshot_name=adaptive ? "head-controls-mapping-adaptive.png" : "head-controls-mapping-fallback.png";
+            require(dialog.grab().save(QDir(stage).absoluteFilePath(snapshot_name)),"mapping controls screenshot failed");
+            auto* per_axis=dialog.findChild<QCheckBox*>("headPerAxis");
+            require(per_axis,"advanced UI missing");
+            per_axis->setChecked(true); wait_ms(230);
             require(!dialog.findChild<QSlider*>("headAmplification")->isEnabled(),"advanced axis overrides left global slider active");
-            require(dialog.grab().save(QDir(stage).absoluteFilePath(QString("head-controls-global-%1-advanced.png").arg(adaptive?"adaptive":"fallback"))),"advanced preview failed");
-            per_axis->setChecked(false); live->setChecked(true); wait_ms(275);
-            require(dialog.grab().save(QDir(stage).absoluteFilePath(QString("head-controls-global-%1-diagnostics.png").arg(adaptive?"adaptive":"fallback"))),"diagnostic preview failed");
-            auto* reset=dialog.findChild<QPushButton*>("headControlsReset"); auto* gain=dialog.findChild<QSlider*>("headAmplification");
-            auto* speed=dialog.findChild<QSlider*>("headSpeed"); auto* enabled=dialog.findChild<QCheckBox*>("headControlsEnabled");
+            require(dialog.grab().save(QDir(stage).absoluteFilePath(QString("head-controls-mapping-%1-advanced.png").arg(adaptive?"adaptive":"fallback"))),"advanced preview failed");
+            per_axis->setChecked(false);
+            auto* reset=dialog.findChild<QPushButton*>("headControlsReset");
             require(reset&&gain&&speed&&enabled,"UI controls missing");
             gain->setValue(12); speed->setValue(30); reset->click();
             require(*settings.amplification==42&&*settings.speed==55&&!*settings.per_axis&&enabled->isChecked(),"UI reset does not restore neutral settings");
-            dialog.save(); gain->setValue(0); speed->setValue(100); dialog.reload(); wait_ms(10);
-            require(gain->value()==42&&speed->value()==55,"global UI save/cancel binding failed");
+            dialog.accept(); gain->setValue(0); speed->setValue(100); mappings(3).spline_main.move_point(1,{10,20}); dialog.reject(); wait_ms(10);
+            require(gain->value()==42&&speed->value()==55&&mappings(3).spline_main.get_points()==original_points,"mapping save/cancel destroyed points or settings");
             enabled->setChecked(false); require(!*settings.head_enabled,"UI master switch not bound");
+
+            main.a_yaw.invert_pre=true; main.a_yaw.invert_post=true; main.a_yaw.altp=true;
+            mappings(3).spline_alt.clear(); mappings(3).spline_alt.add_point(0,0); mappings(3).spline_alt.add_point(10,15); mappings(3).spline_alt.add_point(30,30);
+            settings.head_enabled=true; settings.amplification=100; settings.prediction_enabled=false;
+            tracker->set({0,0,0,0,0,0}); wait_ms(40); pipeline_.set_center(true); wait_ms(40);
+            require(std::abs(protocol->read()[3]-3)<.05,"center request was lost before inversion check");
+            tracker->set({2,3,4,10,8,5}); wait_ms(250);
+            const double alternate=mappings(3).spline_alt.get_value_no_save(-10);
+            std::cout << "Inversion: output=" << protocol->read()[3] << " alternate=" << alternate
+                << " raw=" << pipeline_.head_movement_snapshot().raw[3]
+                << " live_gain=" << pipeline_.head_movement_snapshot().gains[3]
+                << " enabled=" << *settings.head_enabled << " speed=" << *settings.speed
+                << " pre=" << *main.a_yaw.invert_pre << " post=" << *main.a_yaw.invert_post
+                << " asymmetric=" << *main.a_yaw.altp << '\n';
+            require(std::abs(protocol->read()[3]-(-(alternate*4-3)))<.5,"asymmetric curve or pre/post inversion sign incorrect");
+            main.a_yaw.invert_pre=false; main.a_yaw.invert_post=false; main.a_yaw.altp=false;
+            tracker->set({50,50,50,40,40,40}); wait_ms(300);
+            require(protocol->read()[0]<=75&&protocol->read()[3]<=183&&protocol->read()[4]<=90,"actual protocol output exceeded amplified movement limits");
         }
-        std::cout << (adaptive?"adaptive":"fallback") << " real pipeline + installed filter + curves + six axes + recenter + prediction + UI: PASS\n";
+        std::cout << (adaptive?"adaptive":"fallback") << " actual pipeline + mapped response + nonlinear/asymmetric curves + saturation + inversion + Mapping UI: PASS\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

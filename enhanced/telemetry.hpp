@@ -48,10 +48,11 @@ public:
 
 struct head_controls_snapshot
 {
-    bool enabled = false, transitioning = false, shared_response = false, fallback_response = false, valid = false;
+    bool enabled = false, per_axis = false, transitioning = false, shared_response = false, fallback_response = false, valid = false;
     int amplification = 42, speed = 55;
     double gain = 1., responsiveness = 1.;
     std::array<double, 6> gains{1,1,1,1,1,1}, raw{}, processed{};
+    std::array<double,6> mapped_target{}, response_cutoffs{}, limits{};
     std::optional<double> estimated_lag_ms;
     timestamp captured{}, submitted{}; // monotonic host timestamps, not wall-clock time
 };

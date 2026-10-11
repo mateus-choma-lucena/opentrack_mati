@@ -1,5 +1,6 @@
 #include "spline-widget.hpp"
 #include "compat/math.hpp"
+#include "enhanced/head-controls.hpp"
 
 #include <algorithm>
 
@@ -54,6 +55,19 @@ void spline_widget::set_config(base_spline* spl)
     }
 
     reload_spline();
+}
+
+void spline_widget::set_mapping_overlay(bool enabled,double gain)
+{
+    if (overlay_enabled==enabled && overlay_gain==gain) return;
+    overlay_enabled=enabled; overlay_gain=gain; draw_function=true; update();
+}
+
+double spline_widget::adjusted_output_for_input(double input) const
+{
+    if (!config) return 0.;
+    const double original=config->get_value_no_save(input);
+    return overlay_enabled ? enhanced::adjusted_mapping_output(original,overlay_gain,config->max_output()) : original;
 }
 
 QColor spline_widget::colorBezier() const
@@ -199,7 +213,7 @@ void spline_widget::drawFunction()
         }
     );
 
-    painter.setPen(QPen(color_, 2, Qt::SolidLine, Qt::FlatCap));
+    painter.setPen(QPen(color_, 2, overlay_enabled ? Qt::DashLine : Qt::SolidLine, Qt::FlatCap));
 
     const double dpr = screen_dpi();
     const double line_length_pixels = std::fmax(1, dpr);
@@ -262,6 +276,23 @@ void spline_widget::drawFunction()
     // same for rightward artifacts
     painter.fillRect(r2, widget_bg_color);
 
+    if (overlay_enabled)
+    {
+        // Draw after the artifact masks so the saturation plateau at the top
+        // boundary remains visible. Clip the stroke to the curve's plot area.
+        painter.save(); painter.setClipRect(pixel_bounds);
+        painter.setPen(QPen(QColor(255,150,20),2,Qt::SolidLine,Qt::FlatCap));
+        const auto plot_point=[&](double x) {
+            QPointF p=point_to_pixel({x,adjusted_output_for_input(x)});
+            p.setY(std::max(p.y(),double(pixel_bounds.top())+1.));
+            return p;
+        };
+        QPainterPath adjusted; adjusted.moveTo(plot_point(0));
+        for (double x=step;x<maxx;x+=step) adjusted.lineTo(plot_point(x));
+        adjusted.lineTo(plot_point(maxx));
+        painter.drawPath(adjusted); painter.restore();
+    }
+
     const int alpha = !isEnabled() ? 64 : 120;
     if (!preview_only)
     {
@@ -316,7 +347,10 @@ void spline_widget::paintEvent(QPaintEvent *e)
     // This new feature is very handy for tweaking the curves!
     QPointF last;
     if (config->get_last_value(last) && isEnabled())
+    {
         drawPoint(p, point_to_pixel(last), QColor(255, 0, 0, 120));
+        if (overlay_enabled) drawPoint(p,point_to_pixel({last.x(),adjusted_output_for_input(last.x())}),QColor(0,200,80,160));
+    }
 }
 
 void spline_widget::drawPoint(QPainter& painter, const QPointF& pos, const QColor& colBG, const QColor& border)
@@ -552,8 +586,9 @@ void spline_widget::show_tooltip(const QPoint& pos, const QPointF& value_)
 
     const QPoint pix(pos.x() + off_x, pos.y() + off_y);
 
-    QToolTip::showText(mapToGlobal(pix),
-                       QString{"value: %1x%2"}.arg(x, 0, 'f', 2).arg(y, 0, 'f', 2),
+    const auto tooltip=overlay_enabled ? tr("Input %1; original curve %2; adjusted target %3").arg(x,0,'f',2).arg(config->get_value_no_save(x),0,'f',2).arg(adjusted_output_for_input(x),0,'f',2)
+                                       : QString{"value: %1x%2"}.arg(x,0,'f',2).arg(y,0,'f',2);
+    QToolTip::showText(mapToGlobal(pix), tooltip,
                        this,
                        rect(),
                        0);

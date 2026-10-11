@@ -17,8 +17,8 @@ public:
     void filter(const double* input, double* output) override;
     void filter_sample(const double* input, double* output, const tracking_sample_info& sample) override;
     bool enhanced_active() const override { return *settings.adaptive_enabled; }
-    bool supports_head_response() const override { return enhanced_active(); }
-    void filter_sample_with_response(const double* input, double* output, const tracking_sample_info& sample, double multiplier) override;
+    bool guarded_mapping_target() const override { return enhanced_active(); }
+    void filter_sample_for_mapping(const double* input, double* reference, double* target, const tracking_sample_info& sample) override;
     std::optional<double> estimated_response_lag_ms() const override { std::lock_guard lock(mutex); return state.estimated_lag_ms(); }
     void center() override { std::lock_guard lock(mutex); state.reset(); }
     void tracking_lost() override { std::lock_guard lock(mutex); state.tracking_lost(); }

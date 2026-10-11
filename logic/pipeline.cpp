@@ -278,6 +278,7 @@ void pipeline::maybe_set_center_pose(const centering_state mode, const Pose& val
             libs.pFilter->center();
         motion_predictor.reset();
         head_controls.reset_motion();
+        target_mapping_started=false;
 
         if (own_center_logic)
         {
@@ -399,20 +400,17 @@ pipeline::get_selected_axis_values(const Pose& newpose) const
     return { newpose, value, disabled };
 }
 
-Pose pipeline::maybe_apply_filter(const Pose& value, bool shared_response) const
+std::pair<Pose,Pose> pipeline::maybe_apply_filter(const Pose& value) const
 {
-    Pose tmp(value);
+    Pose tmp(value), target(value);
 
     // nan/inf values will corrupt filter internal state
     if (libs.pFilter)
     {
-        if (shared_response)
-            libs.pFilter->filter_sample_with_response(value, tmp, current_sample, head_controls.response_multiplier());
-        else
-            libs.pFilter->filter_sample(value, tmp, current_sample);
+        libs.pFilter->filter_sample_for_mapping(value,tmp,target,current_sample);
     }
 
-    return tmp;
+    return {tmp,target};
 }
 
 Pose pipeline::apply_zero_pos(Pose value) const
@@ -423,12 +421,12 @@ Pose pipeline::apply_zero_pos(Pose value) const
     return value;
 }
 
-Pose pipeline::apply_reltrans(Pose value, vec6_bool disabled, bool centerp)
+Pose pipeline::apply_reltrans(Pose value, vec6_bool disabled, bool centerp, reltrans& transform)
 {
     if (centerp)
-        rel.on_center();
+        transform.on_center();
 
-    value = rel.apply_pipeline(s.reltrans_mode, value,
+    value = transform.apply_pipeline(s.reltrans_mode, value,
                                { !!s.reltrans_disable_tx,
                                  !!s.reltrans_disable_ty,
                                  !!s.reltrans_disable_tz,
@@ -443,6 +441,19 @@ Pose pipeline::apply_reltrans(Pose value, vec6_bool disabled, bool centerp)
         if (disabled(k))
             value(k) = 0;
 
+    return value;
+}
+
+Pose pipeline::map_target(Pose value, vec6_bool disabled, bool centerp, reltrans& transform, bool record)
+{
+    auto curve=[&](int axis) {
+        if (record) return map(value(axis),m(axis));
+        const bool alt=value(axis)<0&&*m(axis).opts.altp;
+        return (alt?m(axis).spline_alt:m(axis).spline_main).get_value_no_save(value(axis));
+    };
+    if (s.apply_mapping_curves) for (int axis=3;axis<6;++axis) value(axis)=curve(axis);
+    value=apply_reltrans(value,disabled,centerp,transform);
+    if (s.apply_mapping_curves) for (int axis=0;axis<3;++axis) value(axis)=curve(axis);
     return value;
 }
 
@@ -471,6 +482,7 @@ void pipeline::logic()
     }
 
     auto [raw, value, disabled] = get_selected_axis_values(m_newpose);
+    Pose response_pose;
     logger.write_pose(raw); // raw
 
     value = apply_camera_offset(value);
@@ -479,7 +491,8 @@ void pipeline::logic()
         if (!std::isfinite(m_newpose(axis)))
         {
             motion_predictor.reset();
-            head_controls.reset_motion();
+            head_controls.tracking_lost();
+            target_mapping_started=false;
             if (libs.pFilter) libs.pFilter->tracking_lost();
             libs.pTracker->enhanced_feedback(false, 0, 0, 0);
             break;
@@ -534,22 +547,14 @@ void pipeline::logic()
     {
         // we must proceed with all the filtering since the filter
         // needs fresh values to prevent deconvergence
-        const bool shared_response = libs.pFilter && libs.pFilter->supports_head_response();
-        enhanced::pose corrected;
-        std::copy_n(static_cast<const double*>(value), 6, corrected.begin());
         if (center_ordered)
-            (void)maybe_apply_filter(value, shared_response);
-        else
-            value = maybe_apply_filter(value, shared_response);
-        nan_check(value);
-        if (!center_ordered)
         {
-            enhanced::pose selected;
-            std::copy_n(static_cast<const double*>(value), 6, selected.begin());
-            const auto response = head_controls.respond(corrected, selected, current_sample.captured, shared_response,
-                shared_response ? libs.pFilter->estimated_response_lag_ms() : std::optional<double>{});
-            std::copy(response.begin(), response.end(), static_cast<double*>(value));
+            (void)maybe_apply_filter(value);
+            response_pose=value;
         }
+        else
+            std::tie(value,response_pose)=maybe_apply_filter(value);
+        nan_check(value,response_pose);
         // Prediction belongs after the selected filter, before response curves and output mapping.
         enhanced::pose measured;
         std::copy_n(static_cast<const double*>(value), 6, measured.begin());
@@ -558,33 +563,33 @@ void pipeline::logic()
             { *enhanced_opts.prediction_enabled, *enhanced_opts.prediction_ms,
               *enhanced_opts.max_rotation, *enhanced_opts.max_translation }, current_sample.confidence, measured);
         if (*enhanced_opts.prediction_enabled)
+        {
+            for (int axis=0;axis<6;++axis)
+                response_pose(axis)+=enhanced::delta(prediction.value[axis],measured[axis],axis);
             std::copy(prediction.value.begin(), prediction.value.end(), static_cast<double*>(value));
+        }
         libs.pTracker->enhanced_feedback(libs.pFilter && libs.pFilter->enhanced_active(),
             prediction.horizon_ms, prediction.rotation, prediction.translation);
         logger.write_pose(value); // "filtered"
     }
 
-    if (s.apply_mapping_curves) {
-        // CAVEAT rotation only, due to reltrans
-        for (int i = 3; i < 6; i++)
-            value(i) = map(value(i), m(i));
-    }
-
-    value = apply_reltrans(value, disabled, center_ordered);
-
-    if (s.apply_mapping_curves) {
-        // CAVEAT translation only, due to tcomp
-        for (int i = 0; i < 3; i++)
-            value(i) = map(value(i), m(i));
-        nan_check(value);
-    }
-
-    // Scale mapped virtual movement once, before fixed zero offsets and protocol inversion.
+    // Both paths use the actual curves and relative-translation implementation. The
+    // selected filter's original path stays warm and is exact at neutral/disabled.
     {
-        enhanced::pose mapped;
-        std::copy_n(static_cast<const double*>(value), 6, mapped.begin());
-        const auto amplified = head_controls.amplify(mapped);
-        std::copy(amplified.begin(), amplified.end(), static_cast<double*>(value));
+        if (!target_mapping_started) target_rel=rel;
+        value=map_target(value,disabled,center_ordered,rel,true);
+        if (head_controls.response_active()) {
+            response_pose=map_target(response_pose,disabled,center_ordered,target_rel,false);
+            target_mapping_started=true;
+        } else { response_pose=value; target_mapping_started=false; }
+        nan_check(value,response_pose);
+        enhanced::pose reference,target,limits;
+        std::copy_n(static_cast<const double*>(value),6,reference.begin());
+        std::copy_n(static_cast<const double*>(response_pose),6,target.begin());
+        for (int axis=0;axis<6;++axis) limits[axis]=s.apply_mapping_curves ? m(axis).opts.max_clamp_y() : std::numeric_limits<double>::infinity();
+        const auto processed=head_controls.process(reference,target,enhanced::clock::now(),current_sample.captured,limits,
+            libs.pFilter&&libs.pFilter->guarded_mapping_target());
+        std::copy(processed.begin(),processed.end(),static_cast<double*>(value));
         nan_check(value);
     }
 
@@ -593,6 +598,7 @@ void pipeline::logic()
 error:
     {
         current_output_is_sample = false;
+        head_controls.tracking_lost();
         QMutexLocker foo(&mtx);
 
         value = m_last_value;
@@ -608,7 +614,8 @@ error:
 
 ok:
 
-    set_center(false);
+    // maybe_set_center_pose() consumes a center request when it processes it.
+    // Clearing again here could discard a new request arriving during this tick.
 
     if (b.get(f_zero))
         for (int i = 0; i < 6; i++)

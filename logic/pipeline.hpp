@@ -104,7 +104,8 @@ class OTR_LOGIC_EXPORT pipeline : private QThread
     // the logger while the tracker is running.
     TrackLogger& logger;
 
-    reltrans rel;
+    reltrans rel, target_rel;
+    bool target_mapping_started=false;
 
     struct {
         Pose P;
@@ -126,8 +127,9 @@ class OTR_LOGIC_EXPORT pipeline : private QThread
     Pose apply_center(const centering_state mode, Pose value) const;
     Pose apply_camera_offset(Pose value) const;
     std::tuple<Pose, Pose, vec6_bool> get_selected_axis_values(const Pose& newpose) const;
-    Pose maybe_apply_filter(const Pose& value, bool shared_response) const;
-    Pose apply_reltrans(Pose value, vec6_bool disabled, bool centerp);
+    std::pair<Pose,Pose> maybe_apply_filter(const Pose& value) const;
+    Pose apply_reltrans(Pose value, vec6_bool disabled, bool centerp, reltrans& transform);
+    Pose map_target(Pose value, vec6_bool disabled, bool centerp, reltrans& transform, bool record);
     Pose apply_zero_pos(Pose value) const;
 
     bits b;

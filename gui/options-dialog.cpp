@@ -8,8 +8,6 @@
 
 #include "options-dialog.hpp"
 #include "listener.h"
-#include "enhanced/head-controls-ui.hpp"
-#include <QScrollArea>
 
 #include <utility>
 
@@ -60,14 +58,6 @@ options_dialog::options_dialog(std::unique_ptr<ITrackerDialog>& tracker_dialog_,
     pause_keybindings(std::move(pause_keybindings))
 {
     ui.setupUi(this);
-
-    auto* head_page=new QWidget;
-    auto* head_form=new QFormLayout(head_page);
-    enhanced_ui::head_movement(head_form,enhanced_opts,[this] { return head_diagnostics ? head_diagnostics() : std::optional<enhanced::head_controls_snapshot>{}; });
-    auto* head_scroll=new QScrollArea;
-    head_scroll->setObjectName("headMovementControlsPage");
-    head_scroll->setWidgetResizable(true); head_scroll->setFrameShape(QFrame::NoFrame); head_scroll->setWidget(head_page);
-    ui.tabWidget->addTab(head_scroll,tr("Head Movement Controls"));
 
     tie_setting(main.tray_enabled, ui.trayp);
     tie_setting(main.tray_start, ui.tray_start);
@@ -384,7 +374,6 @@ void options_dialog::save()
 {
     qDebug() << "options_dialog: save";
     main.b->save();
-    enhanced_opts.b->save();
     ui.game_detector->save();
     set_disable_translation_state(ui.disable_translation->isChecked());
 
@@ -399,7 +388,6 @@ void options_dialog::reload()
     ui.game_detector->revert();
 
     main.b->reload();
-    enhanced_opts.b->reload();
     for (auto* dlg : module_list{ tracker_dialog, proto_dialog, filter_dialog })
         if (dlg)
             dlg->reload();

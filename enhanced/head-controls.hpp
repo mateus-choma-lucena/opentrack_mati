@@ -20,37 +20,53 @@ struct head_control_parameters
     std::array<int,6> axes{42,42,42,42,42,42};
 };
 
-// One state per axis; no frame queue. A convex exponential step cannot overshoot its target.
-class response_filter
+inline double adjusted_mapping_output(double mapped, double gain, double limit)
+{ return std::clamp(mapped*gain, -std::abs(limit), std::abs(limit)); }
+
+// Convergence in mapped protocol units, not wrapped physical head angles.
+class output_response
 {
-    pose output{}, previous{}, velocity{};
-    timestamp last{};
-    bool initialized = false;
-    std::optional<double> lag_ms;
+    pose output{}, previous_reference{};
+    pose baseline_cutoffs{12,12,12,12,12,12}, effective_cutoffs{12,12,12,12,12,12};
+    timestamp last{}, last_sample{};
+    bool initialized=false, lost=false;
 public:
-    void reset() { *this = {}; }
-    void seed(const pose& value, timestamp time, std::optional<pose> measurement={})
-    { output=value; previous=measurement.value_or(value); velocity={}; last=time; initialized=true; lag_ms.reset(); }
-    std::optional<double> estimated_lag_ms() const { return lag_ms; }
-    pose update(const pose& input, timestamp time, double response)
+    void reset() { *this={}; }
+    void tracking_lost() { lost=true; }
+    void constrain(const pose& limits) { for (std::size_t i=0;i<6;++i) output[i]=std::clamp(output[i],-limits[i],limits[i]); }
+    const pose& cutoffs() const { return effective_cutoffs; }
+    void seed(const pose& value, timestamp now) { output=value; last=now; initialized=true; }
+    pose update(const pose& target, const pose& reference, const pose& unamplified_target,
+                timestamp now, timestamp sample, double multiplier)
     {
-        if (!finite(input)) return output;
-        if (!initialized) { seed(input,time); return output; }
-        if (time <= last) return output;
-        const double dt = std::chrono::duration<double>(time-last).count();
-        last=time;
-        if (dt > .25) { previous=input; velocity={}; return output; }
-        double lowest=60.;
+        if (!finite(target)||!finite(reference)||!finite(unamplified_target)) { tracking_lost(); return output; }
+        if (!initialized) { seed(reference,now); previous_reference=reference; last_sample=sample; return output; }
+        if (now<=last) return output;
+        const double dt=std::chrono::duration<double>(now-last).count(); last=now;
+        if (lost || dt>.25) { lost=false; previous_reference=reference; last_sample=sample; return output; }
+        // Observe the selected filter's response in mapped coordinates. It is a parallel
+        // reference, never an extra serial smoothing pass. Invalid/non-exponential ratios
+        // retain the last usable cutoff; a passthrough uses the documented 12 Hz baseline.
+        if (sample>last_sample)
+        {
+            const double frame_dt=std::chrono::duration<double>(sample-last_sample).count();
+            if (last_sample!=timestamp{}&&frame_dt>0&&frame_dt<=.25)
+                for (std::size_t i=0;i<6;++i)
+                {
+                    const double distance=unamplified_target[i]-previous_reference[i];
+                    if (std::abs(distance)<1e-6) continue;
+                    const double fraction=(reference[i]-previous_reference[i])/distance;
+                    if (fraction>1e-5&&fraction<1.-1e-5)
+                        baseline_cutoffs[i]=std::clamp(-std::log1p(-fraction)/(6.283185307179586*frame_dt),.4,60.);
+                    else if (fraction>=1.-1e-5&&fraction<=1.+1e-5) baseline_cutoffs[i]=12.;
+                }
+            previous_reference=reference; last_sample=sample;
+        }
         for (std::size_t i=0;i<6;++i)
         {
-            const double v=delta(input[i],previous[i],i)/dt;
-            velocity[i] += alpha(8.,dt)*(v-velocity[i]);
-            const double cutoff=std::clamp((12.+.15*std::abs(velocity[i]))*std::clamp(response,.125,5.),1.5,60.);
-            lowest=std::min(lowest,cutoff);
-            output[i] += alpha(cutoff,dt)*delta(input[i],output[i],i);
-            if (i>=3) output[i]=std::remainder(output[i],360.);
+            effective_cutoffs[i]=std::clamp(baseline_cutoffs[i]*std::clamp(multiplier,.125,5.),.05,60.);
+            output[i] += alpha(effective_cutoffs[i],dt)*(target[i]-output[i]);
         }
-        previous=input; lag_ms=1000./(6.283185307179586*lowest);
         return output;
     }
 };
@@ -64,8 +80,9 @@ class head_movement_controls
         bool operator==(const controls&) const = default;
     } current, from, target;
     timestamp transition_start{};
-    bool initialized=false, fallback_seeded=false;
-    response_filter fallback;
+    bool initialized=false, response_seeded=false, recovering=false;
+    pose last_processed{};
+    output_response response;
     head_controls_snapshot diagnostic;
 
     void advance(timestamp now)
@@ -78,7 +95,8 @@ class head_movement_controls
         for (std::size_t i=0;i<6;++i) current.gains[i]=std::lerp(from.gains[i],target.gains[i],w);
     }
 public:
-    void reset_motion() { fallback.reset(); fallback_seeded=false; diagnostic.estimated_lag_ms.reset(); }
+    void reset_motion() { response.reset(); response_seeded=false; recovering=false; diagnostic.estimated_lag_ms.reset(); }
+    void tracking_lost() { response.tracking_lost(); recovering=response_seeded; }
     void configure(timestamp now, head_control_parameters p)
     {
         if (initialized) advance(now);
@@ -93,37 +111,39 @@ public:
         }
         if (!(desired==target)) { from=current; target=desired; transition_start=now; }
         diagnostic.enabled=p.enabled;
+        diagnostic.per_axis=p.per_axis;
         diagnostic.amplification=std::clamp(p.amplification,0,100); diagnostic.speed=std::clamp(p.speed,0,100);
         diagnostic.transitioning=!(current==target);
         diagnostic.gain=current.gain; diagnostic.gains=current.gains; diagnostic.responsiveness=current.response;
         diagnostic.shared_response=diagnostic.fallback_response=false;
         diagnostic.estimated_lag_ms.reset();
     }
-    double response_multiplier() const { return current.response; }
-    pose respond(const pose& input, const pose& selected, timestamp captured, bool shared, std::optional<double> shared_lag={})
+    bool response_active() const { return current.blend>0 || target.blend>0; }
+    pose process(const pose& mapped_reference, const pose& mapped_target, timestamp now, timestamp captured,
+                 const pose& limits, bool guarded=false)
     {
-        if (shared)
+        pose reference=mapped_reference, destination=mapped_target;
+        const bool transform=diagnostic.enabled||diagnostic.transitioning;
+        for (std::size_t i=0;i<6;++i) if (transform)
         {
-            diagnostic.shared_response=diagnostic.enabled || diagnostic.transitioning;
-            diagnostic.estimated_lag_ms=shared_lag; reset_fallback(); return selected;
+            reference[i]=adjusted_mapping_output(reference[i],current.gains[i],limits[i]);
+            destination[i]=adjusted_mapping_output(destination[i],current.gains[i],limits[i]);
         }
-        if (current.blend==0 && target.blend==0) { reset_fallback(); return selected; }
-        if (!fallback_seeded) { fallback.seed(selected,captured,input); fallback_seeded=true; }
-        const auto filtered=fallback.update(input,captured,current.response);
-        diagnostic.fallback_response=current.blend>0;
-        diagnostic.estimated_lag_ms=fallback.estimated_lag_ms();
-        pose result=selected;
-        for (std::size_t i=0;i<6;++i)
-        {
-            result[i] += current.blend*delta(filtered[i],selected[i],i);
-            if (i>=3 && current.blend>0) result[i]=std::remainder(result[i],360.);
+        diagnostic.limits=limits; diagnostic.mapped_target=destination;
+        if (!response_active()) { reset_motion(); diagnostic.response_cutoffs={}; last_processed=reference; return reference; }
+        if (recovering) { recovering=false; return last_processed; }
+        if (!response_seeded) { response.seed(reference,now); response_seeded=true; }
+        if (transform) response.constrain(limits);
+        const auto filtered=response.update(destination,mapped_reference,mapped_target,now,captured,current.response);
+        diagnostic.shared_response=guarded; diagnostic.fallback_response=current.blend>0;
+        diagnostic.response_cutoffs=response.cutoffs();
+        diagnostic.estimated_lag_ms=1000./(6.283185307179586 * *std::min_element(response.cutoffs().begin(),response.cutoffs().end()));
+        pose result=reference;
+        for (std::size_t i=0;i<6;++i) {
+            result[i]=std::lerp(reference[i],filtered[i],current.blend);
+            if (transform) result[i]=std::clamp(result[i],-limits[i],limits[i]);
         }
-        return result;
-    }
-    pose amplify(const pose& mapped) const
-    {
-        pose result=mapped;
-        for (std::size_t i=0;i<6;++i) result[i]*=current.gains[i];
+        last_processed=result;
         return result;
     }
     head_controls_snapshot snapshot(const pose& raw, const pose& processed, timestamp captured, timestamp submitted, bool valid)
@@ -131,7 +151,5 @@ public:
         diagnostic.raw=raw; diagnostic.processed=processed; diagnostic.captured=captured; diagnostic.submitted=submitted; diagnostic.valid=valid;
         return diagnostic;
     }
-private:
-    void reset_fallback() { fallback.reset(); fallback_seeded=false; }
 };
 } // namespace enhanced

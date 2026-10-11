@@ -5,7 +5,7 @@
 This fork is **OpenTrack Enhanced**. See [ENHANCED.md](ENHANCED.md) for opt-in capture,
 adaptive smoothing, prediction, diagnostics, Windows builds and hardware validation.
 [Head Movement Controls](HEAD-MOVEMENT-CONTROLS.md) add neutral Amplification/Speed sliders
-to the existing profile and response-curve pipeline.
+to the existing Mapping editor, with original/adjusted curve overlays and output response timing.
 
 opentrack is a program for tracking user's head rotation and transmitting it to flight simulation software and military-themed video games. Project home is located at <<https://github.com/opentrack/opentrack>>.
 

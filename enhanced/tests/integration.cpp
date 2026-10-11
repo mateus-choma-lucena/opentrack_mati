@@ -121,11 +121,8 @@ int main(int argc, char** argv)
     dialog->grab().save(QDir(stage).absoluteFilePath("enhanced-settings-preview.png"));
     if (auto* tabs = dialog->findChild<QTabWidget*>("enhancedTabs"))
     {
-        const auto* amplification=dialog->findChild<QSlider*>("headAmplification");
-        const auto* speed=dialog->findChild<QSlider*>("headSpeed");
-        const auto* enabled=dialog->findChild<QCheckBox*>("headControlsEnabled");
-        if (tabs->count()!=6 || !amplification || !speed || !enabled || amplification->value()!=42 || speed->value()!=55 || enabled->isChecked())
-        { std::cerr << "Head Movement Controls UI defaults invalid"; return 1; }
+        if (tabs->count()!=5 || dialog->findChild<QWidget*>("headAmplification"))
+        { std::cerr << "Mapping controls duplicated in tracker dialog"; return 1; }
         for (int index=0; index<tabs->count(); ++index)
         {
             tabs->setCurrentIndex(index); wait_ms(20);

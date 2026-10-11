@@ -146,10 +146,11 @@ struct OTR_API_EXPORT IFilter : module_status_mixin
     virtual void filter_sample(const double* input, double* output, const tracking_sample_info&)
     { filter(input, output); }
     virtual bool enhanced_active() const { return false; }
-    // Per-sample Speed override. Only supporting filters use it; saved settings stay untouched.
-    virtual bool supports_head_response() const { return false; }
-    virtual void filter_sample_with_response(const double* input, double* output, const tracking_sample_info& sample, double)
-    { filter_sample(input, output, sample); }
+    // Return the normal filtered reference and a target for post-mapping convergence.
+    // Supporting filters retain measurement guards while leaving temporal response to output.
+    virtual bool guarded_mapping_target() const { return false; }
+    virtual void filter_sample_for_mapping(const double* input, double* reference, double* target, const tracking_sample_info& sample)
+    { filter_sample(input,reference,sample); std::copy_n(input,6,target); }
     virtual std::optional<double> estimated_response_lag_ms() const { return {}; }
     virtual void tracking_lost() {}
     // optionally reset the filter when centering

@@ -118,6 +118,18 @@ Press &quot;clear calibration&quot; to remove any calibration data pertaining to
         <translation>Z轴</translation>
     </message>
     <message>
+        <source>Head Movement Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dashed: original curve. Orange: adjusted target, capped at Max output. Points edit the original.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speed controls how quickly output reaches the adjusted target.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1°</source>
         <translation>%1度</translation>
     </message>
@@ -359,10 +371,6 @@ Press &quot;clear calibration&quot; to remove any calibration data pertaining to
     <message>
         <source>None</source>
         <translation>无</translation>
-    </message>
-    <message>
-        <source>Head Movement Controls</source>
-        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Centering method</source>
