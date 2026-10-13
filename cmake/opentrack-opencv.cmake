@@ -21,8 +21,27 @@ if(OpenCV_FOUND)
         set(OTR_OPENCV_FEATURES_MODULES "")
     endif()
 
-    foreach(i ${OTR_OPENCV_CALIB_MODULES} opencv_core opencv_highgui opencv_imgcodecs
-            opencv_imgproc opencv_video opencv_videoio)
-        otr_install_pdb_for_imported_target(${i})
-    endforeach()
+    # Keep the module variables in each caller's directory scope, but register
+    # runtime installation only once across all OpenCV consumers.
+    get_property(_opencv_install_registered GLOBAL PROPERTY OTR_OPENCV_INSTALL_REGISTERED)
+    if(NOT _opencv_install_registered)
+        set_property(GLOBAL PROPERTY OTR_OPENCV_INSTALL_REGISTERED TRUE)
+        foreach(i ${OTR_OPENCV_CALIB_MODULES} ${OTR_OPENCV_FEATURES_MODULES} opencv_flann
+                opencv_core opencv_highgui opencv_imgcodecs opencv_imgproc opencv_video opencv_videoio)
+            otr_install_pdb_for_imported_target(${i})
+            # Component targets resolve to opencv_world in official SDKs, or
+            # individual DLLs in shared source builds. The helper skips .lib.
+            otr_install_lib(${i} "${opentrack-libexec}")
+        endforeach()
+        if(WIN32 AND OpenCV_SHARED AND TARGET opencv_videoio)
+            get_target_property(_opencv_videoio_runtime opencv_videoio IMPORTED_LOCATION_RELEASE)
+            if(_opencv_videoio_runtime)
+                get_filename_component(_opencv_runtime_directory "${_opencv_videoio_runtime}" DIRECTORY)
+                file(GLOB _opencv_videoio_plugins "${_opencv_runtime_directory}/opencv_videoio_ffmpeg*.dll")
+                foreach(_plugin IN LISTS _opencv_videoio_plugins)
+                    otr_install_lib("${_plugin}" "${opentrack-libexec}")
+                endforeach()
+            endif()
+        endif()
+    endif()
 endif()

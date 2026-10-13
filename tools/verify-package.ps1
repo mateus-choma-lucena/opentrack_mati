@@ -23,14 +23,19 @@ foreach ($relative in $required) {
 }
 $manifest = Get-Content -LiteralPath (Join-Path $packageRoot 'doc/runtime-dependencies.json') -Raw | ConvertFrom-Json
 if ($manifest.schema -ne 1 -or $manifest.pointer_bits -ne 64 -or $manifest.opencv_linkage -notin @('static','shared')) { throw 'Invalid Windows x64 runtime dependency manifest' }
-$openCvWorld = @(Get-ChildItem -LiteralPath (Join-Path $packageRoot 'modules') -Filter 'opencv_world*.dll' -File | Where-Object { $_.Length -gt 0 })
+$openCvSuffix = ($manifest.opencv_version -split '\.')[0..2] -join ''
+$openCvWorld = @(Get-ChildItem -LiteralPath (Join-Path $packageRoot 'modules') -Filter "opencv_world$openCvSuffix.dll" -File | Where-Object { $_.Length -gt 0 })
+$openCvRuntimes = @($openCvWorld)
 if ($manifest.opencv_linkage -eq 'shared' -and $openCvWorld.Count -eq 0) {
-    foreach ($component in @('core','imgproc','video')) {
-        $componentFiles = @(Get-ChildItem -LiteralPath (Join-Path $packageRoot 'modules') -Filter "opencv_$component*.dll" -File | Where-Object { $_.Length -gt 0 -and $_.Name -match "^opencv_${component}[0-9]+d?\.dll$" })
-        if ($componentFiles.Count -eq 0) { throw "Required OpenCV optical-flow runtime component missing: $component" }
+    $openCvComponents = @('core','imgproc','video','imgcodecs','videoio','highgui','flann')
+    $openCvComponents += if ([int]($manifest.opencv_version -split '\.')[0] -ge 5) { @('calib','geometry','features') } else { @('calib3d','features2d') }
+    foreach ($component in $openCvComponents) {
+        $componentFiles = @(Get-ChildItem -LiteralPath (Join-Path $packageRoot 'modules') -Filter "opencv_$component$openCvSuffix.dll" -File | Where-Object { $_.Length -gt 0 })
+        if ($componentFiles.Count -eq 0) { throw "Required OpenCV $($manifest.opencv_version) Release runtime component missing: $component" }
+        $openCvRuntimes += $componentFiles
     }
 }
-foreach ($relative in @('opentrack.exe','opentrack-user-interface.dll','Qt6Core.dll','modules/onnxruntime.dll','modules/opentrack-tracker-neuralnet.dll','modules/opentrack-filter-enhanced-adaptive.dll','modules/opentrack-video-ps3eye.dll','modules/NPClient64.dll','modules/freetrackclient64.dll')) {
+foreach ($relative in (@('opentrack.exe','opentrack-user-interface.dll','Qt6Core.dll','modules/onnxruntime.dll','modules/opentrack-tracker-neuralnet.dll','modules/opentrack-filter-enhanced-adaptive.dll','modules/opentrack-video-ps3eye.dll','modules/NPClient64.dll','modules/freetrackclient64.dll') + @($openCvRuntimes | ForEach-Object { "modules/$($_.Name)" }))) {
     $binary = [IO.File]::ReadAllBytes((Join-Path $packageRoot $relative))
     $peOffset = [BitConverter]::ToInt32($binary,60)
     if ($peOffset -lt 0 -or $peOffset+6 -gt $binary.Length -or [BitConverter]::ToUInt32($binary,$peOffset) -ne 0x4550 -or [BitConverter]::ToUInt16($binary,$peOffset+4) -ne 0x8664) { throw "Expected x64 PE runtime: $relative" }

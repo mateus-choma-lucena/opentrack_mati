@@ -9,18 +9,18 @@ endif()
 
 option(OPENTRACK_REQUIRE_NEURALNET "Fail configuration when NeuralNet dependencies are unavailable" OFF)
 if(OPENTRACK_REQUIRE_NEURALNET)
-    find_package(OpenCV REQUIRED)
+    find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video)
     find_package(OpenMP REQUIRED)
     find_package(ONNXRuntime REQUIRED)
 else()
-    find_package(OpenCV QUIET)
+    find_package(OpenCV QUIET COMPONENTS core imgproc imgcodecs video)
     find_package(OpenMP QUIET)
     find_package(ONNXRuntime QUIET)
 endif()
 
 if(OpenCV_FOUND AND ONNXRuntime_FOUND AND OpenMP_FOUND)
-    # Export the dependency configuration used by this build. CI links OpenCV
-    # statically, while development installations may use DLLs.
+    # Export the dependency configuration used by this build so packaging can
+    # verify shared OpenCV runtimes as well as static development installations.
     if(OpenCV_SHARED)
         set(_opencv_linkage "shared")
     else()
